@@ -18,9 +18,9 @@ from himena.qt.magicgui import get_type_map
 from himena.qt.magicgui._toggle_switch import QLabeledToggleSwitch
 from himena.consts import MonospaceFontFamily
 from himena.plugins import validate_protocol
-from himena_plasmid_editor.consts import Keys, ApeAnnotation, SeqMeta, Type
-from himena_plasmid_editor._utils import parse_ape_color, get_feature_label
-from himena_plasmid_editor.widgets._feature_view import QFeatureView
+from himena_bio.consts import Keys, ApeAnnotation, SeqMeta, Type
+from himena_bio._utils import parse_ape_color, get_feature_label
+from himena_bio.widgets._feature_view import QFeatureView
 
 
 def _char_to_qt_key(char: str) -> Qt.Key:
@@ -211,13 +211,19 @@ class QSeqEdit(QtW.QPlainTextEdit):
         paste_action = menu.addAction("Paste", self._paste)
         menu.addSeparator()
         new_feature_action = menu.addAction("New Feature", self._new_feature)
-        edit_feature_action = menu.addAction("Edit Feature", self._edit_feature)
-        del_feature_action = menu.addAction("Delete Feature", self._delete_feature)
+        edit_feature_action = menu.addAction(
+            "Edit Feature", lambda: self._edit_feature(self._get_front_feature())
+        )
+        del_feature_action = menu.addAction(
+            "Delete Feature", lambda: self._delete_feature(self._get_front_feature())
+        )
         move_feature_front_action = menu.addAction(
-            "Move Feature Front", self._move_feature_front
+            "Move Feature Front",
+            lambda: self._move_feature_front(self._get_front_feature()),
         )
         move_feature_back_action = menu.addAction(
-            "Move Feature Back", self._move_feature_back
+            "Move Feature Back",
+            lambda: self._move_feature_back(self._get_front_feature()),
         )
         if not cursor.hasSelection():
             cut_action.setEnabled(False)
@@ -264,30 +270,26 @@ class QSeqEdit(QtW.QPlainTextEdit):
         features = self._features_under_pos(pos)
         return features[-1]
 
-    def _edit_feature(self):
-        feature = self._get_front_feature()
+    def _edit_feature(self, feature):
         kwargs = self._feature_qualifiers_from_dialog(
             name=feature.type,
             fcolor=feature.qualifiers.get(ApeAnnotation.FWCOLOR, ["cyan"])[0],
             rcolor=feature.qualifiers.get(ApeAnnotation.RVCOLOR, ["cyan"])[0],
         )
-        feature.type = kwargs["type"]
+        feature.type = feature.id = kwargs["type"]
         feature.qualifiers.update(kwargs["qualifiers"])
         self.update_highlight()
 
-    def _delete_feature(self):
-        feature = self._get_front_feature()
+    def _delete_feature(self, feature):
         self._record.features.remove(feature)
         self.update_highlight()
 
-    def _move_feature_front(self):
-        feature = self._get_front_feature()
+    def _move_feature_front(self, feature):
         self._record.features.remove(feature)
         self._record.features.append(feature)
         self.update_highlight()
 
-    def _move_feature_back(self):
-        feature = self._get_front_feature()
+    def _move_feature_back(self, feature):
         self._record.features.remove(feature)
         self._record.features.insert(0, feature)
         self.update_highlight()
@@ -307,6 +309,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
         return {
             "type": w_name.value,
             "qualifiers": {
+                ApeAnnotation.LABEL: [w_name.value],
                 ApeAnnotation.FWCOLOR: [Color(w_fcolor.value).hex],
                 ApeAnnotation.RVCOLOR: [Color(w_rcolor.value).hex],
             },
@@ -325,7 +328,7 @@ class QMultiSeqEdit(QtW.QWidget):
         self._seq_choices = QtW.QComboBox(self)
         layout.addWidget(self._seq_choices)
 
-        self._feature_view = QFeatureView()
+        self._feature_view = QFeatureView(self)
         self._feature_view.setFixedHeight(40)
         self._feature_view.clicked.connect(self._on_view_clicked)
         self._feature_view.hovered.connect(self._on_view_hovered)
@@ -483,10 +486,6 @@ class QMultiSeqEdit(QtW.QWidget):
     def _on_view_hovered(self, feature: SeqFeature | None, nth: int):
         if isinstance(feature, SeqFeature):
             label = get_feature_label(feature)
-            if feature.location.strand == 1:
-                label = f">>> {label} >>>"
-            elif feature.location.strand == -1:
-                label = f"<<< {label} <<<"
             self._control._feature_label.setText(label)
         else:
             self._control._feature_label.setText("")

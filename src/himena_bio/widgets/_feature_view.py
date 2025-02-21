@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from logging import getLogger
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
@@ -10,13 +11,16 @@ from Bio.SeqFeature import SeqFeature, SimpleLocation, CompoundLocation
 
 from himena.widgets import set_clipboard
 from himena.qt import qimage_to_ndarray
-from himena_plasmid_editor.consts import ApeAnnotation
-from himena_plasmid_editor._utils import (
+from himena_bio.consts import ApeAnnotation
+from himena_bio._utils import (
     feature_to_slice,
     parse_ape_color,
     get_feature_label,
 )
-from himena_plasmid_editor.widgets._base import QBaseGraphicsView
+from himena_bio.widgets._base import QBaseGraphicsView
+
+if TYPE_CHECKING:
+    from himena_bio.widgets.editor import QMultiSeqEdit
 
 _LOGGER = getLogger(__name__)
 
@@ -70,8 +74,9 @@ class QFeatureView(QBaseGraphicsView):
     clicked = QtCore.Signal(object, int)
     hovered = QtCore.Signal(object, int)
 
-    def __init__(self):
+    def __init__(self, parent: QMultiSeqEdit):
         super().__init__()
+        self._mseq_edit = parent
         self.setMouseTracking(True)
         self.setStyleSheet("QFeatureView { border: none; }")
         self._center_line = QtW.QGraphicsLineItem(0, 0, 1, 0)
@@ -156,7 +161,16 @@ class QFeatureView(QBaseGraphicsView):
     def _make_menu_for_feature(self, feature: SeqFeature, nth: int) -> QtW.QMenu:
         menu = QtW.QMenu()
         menu.addAction("Copy", lambda: self._copy_feature(feature, nth))
-        menu.addAction("Edit", lambda: self._edit_feature(feature))
+        menu.addAction("Edit", lambda: self._mseq_edit._seq_edit._edit_feature(feature))
+        menu.addAction(
+            "Delete", lambda: self._mseq_edit._seq_edit._delete_feature(feature)
+        )
+        menu.addAction(
+            "Move Front", lambda: self._mseq_edit._seq_edit._move_feature_front(feature)
+        )
+        menu.addAction(
+            "Move Back", lambda: self._mseq_edit._seq_edit._move_feature_back(feature)
+        )
         return menu
 
     def _make_menu_for_blank(self) -> QtW.QMenu:
@@ -169,9 +183,6 @@ class QFeatureView(QBaseGraphicsView):
         x0, x1 = feature_to_slice(feature, nth)
         set_clipboard(text=str(self._record.seq[x0:x1]), internal_data=feature)
         return
-
-    def _edit_feature(self, feature: SeqFeature):
-        pass
 
     def _copy_as_image(self):
         arr = qimage_to_ndarray(self.grab().toImage()).copy()

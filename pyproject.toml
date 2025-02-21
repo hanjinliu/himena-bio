@@ -3,9 +3,9 @@ requires = ["hatchling>=1.26.1"]
 build-backend = "hatchling.build"
 
 [project]
-name = "himena-plasmid-editor"
+name = "himena-bio"
 dynamic = ["version"]
-description = "Plasmid editor for Biologists"
+description = "The biopython plugin for himena"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -30,28 +30,28 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/hanjinliu/himena-plasmid-editor#readme"
-Issues = "https://github.com/hanjinliu/himena-plasmid-editor/issues"
-Source = "https://github.com/hanjinliu/himena-plasmid-editor"
+Documentation = "https://github.com/hanjinliu/himena-bio#readme"
+Issues = "https://github.com/hanjinliu/himena-bio/issues"
+Source = "https://github.com/hanjinliu/himena-bio"
 
 [tool.hatch.version]
-path = "src/himena_plasmid_editor/__init__.py"
+path = "src/himena_bio/__init__.py"
 
 [tool.hatch.envs.types]
 extra-dependencies = [
   "mypy>=1.0.0",
 ]
 [tool.hatch.envs.types.scripts]
-check = "mypy --install-types --non-interactive {args:src/himena_plasmid_editor tests}"
+check = "mypy --install-types --non-interactive {args:src/himena_bio tests}"
 
 [tool.coverage.run]
-source_pkgs = ["himena_plasmid_editor", "tests"]
+source_pkgs = ["himena_bio", "tests"]
 branch = true
 parallel = true
 
 [tool.coverage.paths]
-himena_plasmid_editor = ["src/himena_plasmid_editor", "*/himena-plasmid-editor/src/himena_plasmid_editor"]
-tests = ["tests", "*/himena-plasmid-editor/tests"]
+himena_bio = ["src/himena_bio", "*/himena-bio/src/himena_bio"]
+tests = ["tests", "*/himena-bio/tests"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -61,6 +61,6 @@ exclude_lines = [
 ]
 
 [project.entry-points."himena.plugin"]
-"Plasmid Editor Widget" = "himena_plasmid_editor.widgets"
-"Bio-Sequence IO" = "himena_plasmid_editor.io"
-"Bio-Sequence Tools" = "himena_plasmid_editor.tools"
+"Plasmid Editor Widget" = "himena_bio.widgets"
+"Bio-Sequence IO" = "himena_bio.io"
+"Bio-Sequence Tools" = "himena_bio.tools"

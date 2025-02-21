@@ -49,6 +49,7 @@ class Keys(SimpleNamespace):
 
 
 class ApeAnnotation(SimpleNamespace):
+    LABEL = "label"
     FWCOLOR = "ApEinfo_fwdcolor"
     RVCOLOR = "ApEinfo_revcolor"
     COMMENT = "comment"

@@ -1,13 +1,13 @@
 from himena import WidgetDataModel, StandardType, Parametric
 from himena.consts import MenuId
 from himena.plugins import register_function, configure_gui
-from himena_plasmid_editor.consts import SeqMeta, Type
+from himena_bio.consts import SeqMeta, Type
 
 
 @register_function(
     menus=MenuId.FILE_NEW,
     title="New DNA",
-    command_id="himena-plasmid-editor:new-dna",
+    command_id="himena-bio:new-dna",
 )
 def new_dna() -> WidgetDataModel:
     """Create a new DNA sequence."""
@@ -17,7 +17,7 @@ def new_dna() -> WidgetDataModel:
 @register_function(
     menus="tools/biology",
     title="Show Codon Table",
-    command_id="himena-plasmid-editor:show-codon-table",
+    command_id="himena-bio:show-codon-table",
 )
 def show_codon_table() -> WidgetDataModel:
     """Display the standard codon table."""
@@ -34,7 +34,7 @@ def show_codon_table() -> WidgetDataModel:
     menus="tools/biology",
     types=[Type.DNA, Type.RNA],
     title="Translate",
-    command_id="himena-plasmid-editor:translate",
+    command_id="himena-bio:translate",
 )
 def translate(model: WidgetDataModel) -> Parametric:
     """Translate a DNA sequence to protein."""

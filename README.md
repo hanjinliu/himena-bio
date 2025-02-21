@@ -1,21 +1,15 @@
-# himena-plasmid-editor
+# himena-bio
 
-[![PyPI - Version](https://img.shields.io/pypi/v/himena-plasmid-editor.svg)](https://pypi.org/project/himena-plasmid-editor)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/himena-plasmid-editor.svg)](https://pypi.org/project/himena-plasmid-editor)
+[![PyPI - Version](https://img.shields.io/pypi/v/himena-bio.svg)](https://pypi.org/project/himena-bio)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/himena-bio.svg)](https://pypi.org/project/himena-bio)
 
 -----
 
-## Table of Contents
-
-- [Installation](#installation)
-- [License](#license)
+The [`biopython`](https://github.com/biopython/biopython) plugin for [`himena`](https://github.com/hanjinliu/himena).
 
 ## Installation
 
 ```console
-pip install himena-plasmid-editor
+pip install himena-bio
+himena <my-profile> --install himena-bio
 ```
-
-## License
-
-`himena-plasmid-editor` is distributed under the terms of the [BSD 3-Clause](https://spdx.org/licenses/BSD 3-Clause.html) license.

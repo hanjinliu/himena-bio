@@ -6,7 +6,7 @@ from Bio import SeqIO
 
 from himena import WidgetDataModel
 from himena.plugins import register_reader_plugin
-from himena_plasmid_editor.consts import Type
+from himena_bio.consts import Type
 
 if TYPE_CHECKING:
     from Bio.SeqIO import SeqRecord
