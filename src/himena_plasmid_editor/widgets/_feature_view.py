@@ -4,40 +4,21 @@ from logging import getLogger
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
 from qtpy.QtCore import Qt
+from Bio.Seq import Seq
 from Bio.SeqIO import SeqRecord
 from Bio.SeqFeature import SeqFeature, SimpleLocation, CompoundLocation
+
+from himena.widgets import set_clipboard
+from himena.qt import qimage_to_ndarray
 from himena_plasmid_editor.consts import ApeAnnotation
-from himena_plasmid_editor._utils import parse_ape_color, get_feature_label
+from himena_plasmid_editor._utils import (
+    feature_to_slice,
+    parse_ape_color,
+    get_feature_label,
+)
+from himena_plasmid_editor.widgets._base import QBaseGraphicsView
 
 _LOGGER = getLogger(__name__)
-
-
-class QBaseGraphicsScene(QtW.QGraphicsScene):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._grab_source: QtW.QGraphicsItem | None = None
-
-    def grabSource(self) -> QtW.QGraphicsItem | None:
-        return self._grab_source
-
-    def setGrabSource(self, item: QtW.QGraphicsItem | None):
-        self._grab_source = item
-
-
-class QBaseGraphicsView(QtW.QGraphicsView):
-    def __init__(self):
-        scene = QBaseGraphicsScene()
-        super().__init__(scene)
-        self.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignHCenter)
-        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.setMouseTracking(True)
-
-    def addItem(self, item: QtW.QGraphicsItem):
-        self.scene().addItem(item)
-
-    def scene(self) -> QBaseGraphicsScene:
-        return super().scene()
 
 
 class QFeatureRectitem(QtW.QGraphicsRectItem):
@@ -80,6 +61,12 @@ class QFeatureItem(QtW.QGraphicsItemGroup):
 
 
 class QFeatureView(QBaseGraphicsView):
+    """The interactive viewer for the features.
+
+    This viewer renders the features of a sequence in a human-readable format like:
+    ---[    ]-[ ]---
+    """
+
     clicked = QtCore.Signal(object, int)
     hovered = QtCore.Signal(object, int)
 
@@ -90,12 +77,14 @@ class QFeatureView(QBaseGraphicsView):
         self._center_line = QtW.QGraphicsLineItem(0, 0, 1, 0)
         pen = QtGui.QPen(QtGui.QColor(Qt.GlobalColor.gray), 2)
         pen.setCosmetic(True)
+        self._record = SeqRecord(Seq(""))
         self._center_line.setPen(pen)
         self._feature_items: list[QFeatureItem] = []
         self.scene().addItem(self._center_line)
 
         self._drag_start = QtCore.QPoint()
         self._drag_prev = QtCore.QPoint()
+        self._last_btn = Qt.MouseButton.NoButton
 
     def set_record(self, record: SeqRecord):
         for item in self._feature_items:
@@ -107,7 +96,8 @@ class QFeatureView(QBaseGraphicsView):
             self.scene().addItem(item)
         _len = len(record.seq) - 1
         self._center_line.setLine(0, 0, _len, 0)
-        self.fitInView(QtCore.QRectF(0, -1, _len, 2))
+        self._record = record
+        self.auto_range()
 
     def wheelEvent(self, event: QtGui.QWheelEvent):
         if event.angleDelta().y() < 0:
@@ -115,11 +105,16 @@ class QFeatureView(QBaseGraphicsView):
         else:
             self.scale(1.1, 1)
 
+    def auto_range(self):
+        _len = self._center_line.line().x2()
+        self.fitInView(QtCore.QRectF(0, -1, _len, 2))
+
     def leaveEvent(self, a0):
         self.hovered.emit(None, 0)
 
     def mousePressEvent(self, event):
         self._drag_start = self._drag_prev = event.pos()
+        self._last_btn = event.button()
         return super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent):
@@ -143,9 +138,41 @@ class QFeatureView(QBaseGraphicsView):
         ds = self._drag_start - self._drag_prev
         is_click = ds.x() + ds.y() < 5
         if is_click:
-            if isinstance(item := self.itemAt(event.pos()), QFeatureRectitem):
+            item = self.itemAt(event.pos())
+            if isinstance(item, QFeatureRectitem):
                 self.clicked.emit(item._feature, item._nth)
             else:
                 pos = event.pos().x()
                 self.clicked.emit(None, pos)
+            if self._last_btn == Qt.MouseButton.RightButton:
+                if isinstance(item, QFeatureRectitem):
+                    menu = self._make_menu_for_feature(item._feature, item._nth)
+                else:
+                    menu = self._make_menu_for_blank()
+                menu.exec(event.globalPos())
+        self._last_btn = Qt.MouseButton.NoButton
         return super().mouseReleaseEvent(event)
+
+    def _make_menu_for_feature(self, feature: SeqFeature, nth: int) -> QtW.QMenu:
+        menu = QtW.QMenu()
+        menu.addAction("Copy", lambda: self._copy_feature(feature, nth))
+        menu.addAction("Edit", lambda: self._edit_feature(feature))
+        return menu
+
+    def _make_menu_for_blank(self) -> QtW.QMenu:
+        menu = QtW.QMenu()
+        menu.addAction("Reset View", self.auto_range)
+        menu.addAction("Copy as image", self._copy_as_image)
+        return menu
+
+    def _copy_feature(self, feature: SeqFeature, nth: int):
+        x0, x1 = feature_to_slice(feature, nth)
+        set_clipboard(text=str(self._record.seq[x0:x1]), internal_data=feature)
+        return
+
+    def _edit_feature(self, feature: SeqFeature):
+        pass
+
+    def _copy_as_image(self):
+        arr = qimage_to_ndarray(self.grab().toImage()).copy()
+        set_clipboard(image=arr)

@@ -26,3 +26,15 @@ def get_feature_label(feature: SeqFeature) -> str:
     if not isinstance(out, str):
         out = feature.type
     return out
+
+
+def feature_to_slice(feature: SeqFeature, nth: int) -> tuple[int, int]:
+    from Bio.SeqFeature import SimpleLocation, CompoundLocation
+
+    if isinstance(loc := feature.location, SimpleLocation):
+        start, end = int(loc.start), int(loc.end)
+    elif isinstance(loc := feature.location, CompoundLocation):
+        start, end = int(loc[nth].start), int(loc[nth].end)
+    else:
+        raise NotImplementedError(f"Unknown location type: {type(loc)}")
+    return start, end

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-
-from typing import Callable
+from typing import Callable, Iterable
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
 from qtpy.QtCore import Qt
@@ -11,8 +10,11 @@ from Bio.SeqFeature import SeqFeature, SimpleLocation, CompoundLocation
 from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp as _Tm
 
+from magicgui.widgets import Dialog
+from cmap import Color
 from himena import WidgetDataModel
 from himena.widgets import set_status_tip
+from himena.qt.magicgui import get_type_map
 from himena.qt.magicgui._toggle_switch import QLabeledToggleSwitch
 from himena.consts import MonospaceFontFamily
 from himena.plugins import validate_protocol
@@ -25,50 +27,53 @@ def _char_to_qt_key(char: str) -> Qt.Key:
     return getattr(Qt.Key, f"Key_{char.upper()}")
 
 
-_KEYS_DNA = frozenset(_char_to_qt_key(char) for char in Keys.DNA)
-_KEYS_RNA = frozenset(_char_to_qt_key(char) for char in Keys.RNA)
-_KEYS_DEL = frozenset([Qt.Key.Key_Backspace, Qt.Key.Key_Delete])
 _KEYS_MOVE = frozenset(
     [Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
     Qt.Key.Key_Home, Qt.Key.Key_End, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown]
 )  # fmt: skip
-_FEATURE = QtGui.QTextFormat.Property.UserProperty
-_LOC_ID = QtGui.QTextFormat.Property.UserProperty + 1
 
 
-class _FeatureBox:
-    def __init__(self, value: SeqFeature):
-        self.value = value
-
-
-class QSeqEdit(QtW.QTextEdit):
+class QSeqEdit(QtW.QPlainTextEdit):
     hovered = QtCore.Signal(object)  # int or None
+    edited = QtCore.Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFont(QtGui.QFont(MonospaceFontFamily, 9))
         self.setWordWrapMode(QtGui.QTextOption.WrapMode.WrapAnywhere)
-        self.setLineWrapMode(QtW.QTextEdit.LineWrapMode.WidgetWidth)
+        self.setLineWrapMode(QtW.QPlainTextEdit.LineWrapMode.WidgetWidth)
         self.setUndoRedoEnabled(True)
         self.setTabChangesFocus(True)
-        self.setAcceptRichText(False)
         self.setAcceptDrops(True)
         self.setMouseTracking(True)
-        self._seq_template = SeqRecord(Seq(""))
-        self._keys_allowed = _KEYS_DNA | _KEYS_DEL | _KEYS_MOVE
+        self._record = SeqRecord(Seq(""))
+        self.set_keys_allowed(Keys.DNA)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
 
     def set_record(self, record: SeqRecord):
+        self._record = record
         self.setPlainText(str(record.seq))
+        self.update_highlight()
+        return None
+
+    def update_highlight(self):
+        cursor = self.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.Start)
+        cursor.movePosition(
+            QtGui.QTextCursor.MoveOperation.End, QtGui.QTextCursor.MoveMode.KeepAnchor
+        )
+        cursor.setCharFormat(QtGui.QTextCharFormat())
         cursor = self.textCursor()
         format = QtGui.QTextCharFormat()
-        for feature in record.features:
+        for feature in self._record.features:
             if isinstance(loc := feature.location, SimpleLocation):
                 parts = [(int(loc.start), int(loc.end))]
             elif isinstance(loc := feature.location, CompoundLocation):
                 parts = [(int(sub.start), int(sub.end)) for sub in loc]
             else:
                 parts = []
-            for ith, (start, end) in enumerate(parts):
+            for start, end in parts:
                 cursor.setPosition(start)
                 cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
                 if colors := feature.qualifiers.get(ApeAnnotation.FWCOLOR):
@@ -81,29 +86,27 @@ class QSeqEdit(QtW.QTextEdit):
                         if luminance < 0.5
                         else Qt.GlobalColor.black
                     )
-                    format.setProperty(_FEATURE, _FeatureBox(feature))
-                    format.setProperty(_LOC_ID, ith)
                     cursor.setCharFormat(format)
-        self._seq_template = record
+        self.edited.emit()
         return None
 
     def to_record(self) -> SeqRecord:
-        # TODO: update features
-        features = self._seq_template.features
         return SeqRecord(
-            seq=self.toPlainText(),
-            id=self._seq_template.id,
-            name=self._seq_template.name,
-            description=self._seq_template.description,
-            dbxrefs=self._seq_template.dbxrefs,
-            features=features,
-            annotations=self._seq_template.annotations,
-            letter_annotations=self._seq_template.letter_annotations,
+            seq=Seq(self.toPlainText()),
+            id=self._record.id,
+            name=self._record.name,
+            description=self._record.description,
+            dbxrefs=self._record.dbxrefs,
+            features=self._record.features,
+            annotations=self._record.annotations,
+            letter_annotations=self._record.letter_annotations,
         )
 
     def keyPressEvent(self, event: QtGui.QKeyEvent):
         _mod = event.modifiers()
         _key = event.key()
+        if _key in _KEYS_MOVE:
+            return super().keyPressEvent(event)
         if _mod & Qt.KeyboardModifier.ControlModifier:
             _shift_on = bool(_mod & Qt.KeyboardModifier.ShiftModifier)
             if _key == Qt.Key.Key_C:
@@ -117,7 +120,12 @@ class QSeqEdit(QtW.QTextEdit):
             return None
         else:
             if _key in self._keys_allowed:
-                return super().keyPressEvent(event)
+                _key_char = event.text()
+                self.insert_text(_key_char, self.textCursor())
+            elif _key == Qt.Key.Key_Backspace:
+                self._backspace_event()
+            elif _key == Qt.Key.Key_Delete:
+                self._delete_event()
             return None
 
     def mouseMoveEvent(self, e):
@@ -147,34 +155,166 @@ class QSeqEdit(QtW.QTextEdit):
         self._copy_selection(rev_comp)
         self.textCursor().removeSelectedText()
 
-    def _post_text_insert(self, start: int, text: str):
+    def insert_text(self, text: str, cursor: QtGui.QTextCursor):
+        start = cursor.selectionStart()
+        if cursor.hasSelection():
+            self.delete_text(cursor)
+            cursor.clearSelection()
         nchars = len(text)
-        cursor = self.textCursor()
-        cursor.setPosition(start)
-        fmt = cursor.charFormat()
-        if isinstance(feature := fmt.property(_FEATURE), _FeatureBox):
-            if isinstance(loc := feature.value.location, SimpleLocation):
-                loc.start += nchars
-                loc.end += nchars
-            elif isinstance(loc := feature.value.location, CompoundLocation):
-                loc_id = fmt.property(_LOC_ID)
-                loc[loc_id].start += nchars
-                loc[loc_id].end += nchars
-            feature.location = loc
+        for feature in self._record.features:
+            _shift_feature(feature, start, nchars)
 
-    def _post_text_remove(self, start: int, nchars: int):
+        cursor.insertText(text)
+        self.update_highlight()
+
+    def delete_text(self, cursor: QtGui.QTextCursor):
+        if not cursor.hasSelection():
+            raise ValueError("No text selected")
+        start = cursor.selectionStart()
+        nchars = cursor.selectionEnd() - start
+        for feature in self._record.features:
+            _shift_feature(feature, start, -nchars)
+        cursor.removeSelectedText()
+        self.update_highlight()
+
+    def _backspace_event(self):
         cursor = self.textCursor()
-        cursor.setPosition(start)
-        fmt = cursor.charFormat()
-        if isinstance(feature := fmt.property(_FEATURE), _FeatureBox):
-            if isinstance(loc := feature.value.location, SimpleLocation):
-                loc.start -= nchars
-                loc.end -= nchars
-            elif isinstance(loc := feature.value.location, CompoundLocation):
-                loc_id = fmt.property(_LOC_ID)
-                loc[loc_id].start -= nchars
-                loc[loc_id].end -= nchars
-            feature.location = loc
+        if not cursor.hasSelection():
+            cursor.movePosition(
+                QtGui.QTextCursor.MoveOperation.PreviousCharacter,
+                QtGui.QTextCursor.MoveMode.KeepAnchor,
+            )
+        self.delete_text(cursor)
+
+    def _delete_event(self):
+        cursor = self.textCursor()
+        if not cursor.hasSelection():
+            cursor.movePosition(
+                QtGui.QTextCursor.MoveOperation.NextCharacter,
+                QtGui.QTextCursor.MoveMode.KeepAnchor,
+            )
+        self.delete_text(cursor)
+
+    def _make_context_menu(self) -> QtW.QMenu:
+        menu = QtW.QMenu()
+        cursor = self.textCursor()
+        pos = cursor.position()
+
+        cut_action = menu.addAction("Cut", self._cut_selection)
+        cut_rc_action = menu.addAction(
+            "Cut (RevComp)", lambda: self._cut_selection(True)
+        )
+        copy_action = menu.addAction("Copy", self._copy_selection)
+        copy_rc_action = menu.addAction(
+            "Copy (RevComp)", lambda: self._copy_selection(True)
+        )
+        paste_action = menu.addAction("Paste", self._paste)
+        menu.addSeparator()
+        new_feature_action = menu.addAction("New Feature", self._new_feature)
+        edit_feature_action = menu.addAction("Edit Feature", self._edit_feature)
+        del_feature_action = menu.addAction("Delete Feature", self._delete_feature)
+        move_feature_front_action = menu.addAction(
+            "Move Feature Front", self._move_feature_front
+        )
+        move_feature_back_action = menu.addAction(
+            "Move Feature Back", self._move_feature_back
+        )
+        if not cursor.hasSelection():
+            cut_action.setEnabled(False)
+            cut_rc_action.setEnabled(False)
+            copy_action.setEnabled(False)
+            copy_rc_action.setEnabled(False)
+            new_feature_action.setEnabled(False)
+            move_feature_front_action.setEnabled(False)
+            move_feature_back_action.setEnabled(False)
+
+        if len(self._features_under_pos(pos)) == 0:
+            edit_feature_action.setEnabled(False)
+            del_feature_action.setEnabled(False)
+
+        if QtW.QApplication.clipboard().text() == "":
+            paste_action.setEnabled(False)
+        return menu
+
+    def _show_context_menu(self, pos: QtCore.QPoint):
+        cursor_pos = self.cursorForPosition(pos).position()
+        cursor = self.textCursor()
+        start, end = cursor.selectionStart(), cursor.selectionEnd()
+        if not start <= cursor_pos < end:
+            cursor.setPosition(cursor_pos)
+            self.setTextCursor(cursor)
+        menu = self._make_context_menu()
+        menu.exec(self.mapToGlobal(pos))
+
+    def _features_under_pos(self, pos: int) -> list[SeqFeature]:
+        return [feat for feat in self._record.features if pos in feat]
+
+    def _new_feature(self):
+        cursor = self.textCursor()
+        start, end = cursor.selectionStart(), cursor.selectionEnd()
+        feature = SeqFeature(
+            location=SimpleLocation(start, end),
+            **self._feature_qualifiers_from_dialog(),
+        )
+        self._record.features.append(feature)
+        self.update_highlight()
+
+    def _get_front_feature(self) -> SeqFeature:
+        pos = self.textCursor().position()
+        features = self._features_under_pos(pos)
+        return features[-1]
+
+    def _edit_feature(self):
+        feature = self._get_front_feature()
+        kwargs = self._feature_qualifiers_from_dialog(
+            name=feature.type,
+            fcolor=feature.qualifiers.get(ApeAnnotation.FWCOLOR, ["cyan"])[0],
+            rcolor=feature.qualifiers.get(ApeAnnotation.RVCOLOR, ["cyan"])[0],
+        )
+        feature.type = kwargs["type"]
+        feature.qualifiers.update(kwargs["qualifiers"])
+        self.update_highlight()
+
+    def _delete_feature(self):
+        feature = self._get_front_feature()
+        self._record.features.remove(feature)
+        self.update_highlight()
+
+    def _move_feature_front(self):
+        feature = self._get_front_feature()
+        self._record.features.remove(feature)
+        self._record.features.append(feature)
+        self.update_highlight()
+
+    def _move_feature_back(self):
+        feature = self._get_front_feature()
+        self._record.features.remove(feature)
+        self._record.features.insert(0, feature)
+        self.update_highlight()
+
+    def _feature_qualifiers_from_dialog(
+        self,
+        name: str = "Unnamed",
+        fcolor: str = "cyan",
+        rcolor: str = "cyan",
+    ) -> dict:
+        typemap = get_type_map()
+        w_name = typemap.create_widget(value=name, label="Name")
+        w_fcolor = typemap.create_widget(value=Color(fcolor), label="Forward Color")
+        w_rcolor = typemap.create_widget(value=Color(rcolor), label="Reverse Color")
+        dlg = Dialog(widgets=[w_name, w_fcolor, w_rcolor])
+        dlg.exec()
+        return {
+            "type": w_name.value,
+            "qualifiers": {
+                ApeAnnotation.FWCOLOR: [Color(w_fcolor.value).hex],
+                ApeAnnotation.RVCOLOR: [Color(w_rcolor.value).hex],
+            },
+        }
+
+    def set_keys_allowed(self, keys: Iterable[str]):
+        _keys = frozenset(_char_to_qt_key(char) for char in keys)
+        self._keys_allowed = _keys
 
 
 class QMultiSeqEdit(QtW.QWidget):
@@ -193,6 +333,7 @@ class QMultiSeqEdit(QtW.QWidget):
 
         self._seq_edit = QSeqEdit(self)
         self._seq_edit.hovered.connect(self._seq_edit_hovered)
+        self._seq_edit.edited.connect(self._seq_edited)
         layout.addWidget(self._seq_edit)
 
         self._comment = QtW.QPlainTextEdit(self)
@@ -222,17 +363,11 @@ class QMultiSeqEdit(QtW.QWidget):
         self._seq_choices.setVisible(len(recs) > 1)
         self._model_type = model.type
         if model.type == Type.DNA:
-            self._seq_edit._keys_allowed = frozenset(
-                _char_to_qt_key(char) for char in Keys.DNA
-            )
+            self._seq_edit.set_keys_allowed(Keys.DNA)
         elif model.type == Type.RNA:
-            self._seq_edit._keys_allowed = frozenset(
-                _char_to_qt_key(char) for char in Keys.RNA
-            )
+            self._seq_edit.set_keys_allowed(Keys.RNA)
         elif model.type == Type.PROTEIN:
-            self._seq_edit._keys_allowed = frozenset(
-                _char_to_qt_key(char) for char in Keys.PROTEIN
-            )
+            self._seq_edit.set_keys_allowed(Keys.PROTEIN)
         else:
             raise NotImplementedError(f"Unsupported model type: {model.type}")
 
@@ -260,13 +395,21 @@ class QMultiSeqEdit(QtW.QWidget):
     def size_hint(self) -> tuple[int, int]:
         return 400, 400
 
+    @validate_protocol
+    def widget_added_callback(self):
+        self._feature_view.auto_range()
+
+    def setFocus(self):
+        self._seq_edit.setFocus()
+
     def _set_record(self, record: SeqRecord):
         self._seq_edit.set_record(record)
         self._feature_view.set_record(record)
         cursor = self._seq_edit.textCursor()
         cursor.setPosition(0)
         self._seq_edit.setTextCursor(cursor)
-        self._comment.setPlainText(record.annotations.get(ApeAnnotation.COMMENT, ""))
+        comment = record.annotations.get(ApeAnnotation.COMMENT, "")
+        self._comment.setPlainText(_remove_ape_meta(comment))
 
     def _selection_changed(self):
         cursor = self._seq_edit.textCursor()
@@ -309,13 +452,14 @@ class QMultiSeqEdit(QtW.QWidget):
             return
         offset = 1 if self._control._is_one_start.isChecked() else 0
         self._control._hover_pos.set_value(str(pos + offset))
-        features = [
-            get_feature_label(feat)
-            for feat in self._seq_edit._seq_template.features
-            if pos in feat
+        feature_labels = [
+            get_feature_label(feat) for feat in self._seq_edit._features_under_pos(pos)
         ]
-        tip = ", ".join(features)
+        tip = ", ".join(feature_labels)
         self._control._feature_label.setText(tip)
+
+    def _seq_edited(self):
+        self._feature_view.set_record(self._seq_edit.to_record())
 
     def _on_view_clicked(self, feature: SeqFeature | None, nth: int):
         if feature is None:
@@ -339,9 +483,14 @@ class QMultiSeqEdit(QtW.QWidget):
     def _on_view_hovered(self, feature: SeqFeature | None, nth: int):
         if isinstance(feature, SeqFeature):
             label = get_feature_label(feature)
+            if feature.location.strand == 1:
+                label = f">>> {label} >>>"
+            elif feature.location.strand == -1:
+                label = f"<<< {label} <<<"
             self._control._feature_label.setText(label)
         else:
             self._control._feature_label.setText("")
+        self._control._hover_pos.set_value(str(nth))
 
 
 class QSeqControl(QtW.QWidget):
@@ -414,3 +563,34 @@ class QVParam(QtW.QWidget):
     def set_visible(self, visible: bool):
         self._label.setVisible(visible)
         self._value.setVisible(visible)
+
+
+def _shift_feature(feature: SeqFeature, start: int, shift: int):
+    if isinstance(loc := feature.location, SimpleLocation):
+        if loc.end > start:
+            start_new, end_new = loc.start, loc.end
+            end_new += shift
+            if loc.start >= start:
+                start_new += shift
+            loc_new = SimpleLocation(start_new, end_new)
+            feature.location = loc_new
+    elif isinstance(loc := feature.location, CompoundLocation):
+        new_parts: list[SimpleLocation] = []
+        for part in loc:
+            part_new: SimpleLocation = part
+            if part.end > start:
+                start_new, end_new = part.start, part.end
+                end_new += shift
+                if part.start >= start:
+                    start_new += shift
+                part_new = SimpleLocation(start_new, end_new)
+            new_parts.append(part_new)
+        loc_new = CompoundLocation(new_parts)
+        feature.location = loc_new
+
+
+def _remove_ape_meta(comment: str) -> str:
+    lines = comment.splitlines()
+    if lines[-1].startswith("ApEinfo:methylated:"):
+        lines.pop(-1)
+    return "\n".join(lines)
