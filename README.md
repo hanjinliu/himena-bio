@@ -5,7 +5,7 @@
 
 -----
 
-The [`biopython`](https://github.com/biopython/biopython) plugin for [`himena`](https://github.com/hanjinliu/himena).
+Plasmid editor and basic bioinformatic analysis in [`himena`](https://github.com/hanjinliu/himena).
 
 ## Installation
 

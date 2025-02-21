@@ -24,7 +24,15 @@ from himena_bio.widgets._feature_view import QFeatureView
 
 
 def _char_to_qt_key(char: str) -> Qt.Key:
-    return getattr(Qt.Key, f"Key_{char.upper()}")
+    if char.isalnum():
+        return getattr(Qt.Key, f"Key_{char.upper()}")
+    if char == " ":
+        return Qt.Key.Key_Space
+    if char == "*":
+        return Qt.Key.Key_Asterisk
+    if char == "-":
+        return Qt.Key.Key_Minus
+    raise NotImplementedError(f"Unsupported character: {char}")
 
 
 _KEYS_MOVE = frozenset(
@@ -357,13 +365,15 @@ class QMultiSeqEdit(QtW.QWidget):
         if len(recs) == 0:
             return
         choices: list[str] = []
+        recs_normed = []
         for rec in recs:
             if not isinstance(rec, SeqRecord):
                 rec = SeqRecord(Seq(rec))
             choices.append(rec.name)
+            recs_normed.append(rec)
         self._seq_choices.addItems(choices)
-        self._set_record(recs[0])
-        self._seq_choices.setVisible(len(recs) > 1)
+        self._set_record(recs_normed[0])
+        self._seq_choices.setVisible(len(recs_normed) > 1)
         self._model_type = model.type
         if model.type == Type.DNA:
             self._seq_edit.set_keys_allowed(Keys.DNA)
@@ -590,6 +600,6 @@ def _shift_feature(feature: SeqFeature, start: int, shift: int):
 
 def _remove_ape_meta(comment: str) -> str:
     lines = comment.splitlines()
-    if lines[-1].startswith("ApEinfo:methylated:"):
+    if lines and lines[-1].startswith("ApEinfo:methylated:"):
         lines.pop(-1)
     return "\n".join(lines)

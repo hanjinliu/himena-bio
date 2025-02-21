@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "himena-bio"
 dynamic = ["version"]
-description = "The biopython plugin for himena"
+description = "Plasmid editor and basic bioinformatic analysis in himena"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }

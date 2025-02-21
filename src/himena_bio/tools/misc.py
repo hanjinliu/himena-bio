@@ -37,7 +37,7 @@ def show_codon_table() -> WidgetDataModel:
     command_id="himena-bio:translate",
 )
 def translate(model: WidgetDataModel) -> Parametric:
-    """Translate a DNA sequence to protein."""
+    """Translate a DNA or RNA sequence to protein."""
     from Bio.SeqRecord import SeqRecord
 
     meta = model.metadata
@@ -48,11 +48,44 @@ def translate(model: WidgetDataModel) -> Parametric:
         index={"bind": meta.current_index},
         selection={"bind": meta.selection},
     )
-    def run_translate(index: int, selection: tuple[int, int]):
+    def run_translate(index: int, selection: tuple[int, int]) -> WidgetDataModel:
         record = model.value[index]
         assert isinstance(record, SeqRecord)
         start, end = selection
         translations = record.seq[start:end].translate()
+        return WidgetDataModel(value=[str(translations)], type=Type.PROTEIN)
+
+    return run_translate
+
+
+@register_function(
+    menus="tools/biology",
+    types=[Type.DNA, Type.RNA],
+    title="Translate until stop codon",
+    command_id="himena-bio:translate-until-stop",
+)
+def translate_until_stop(model: WidgetDataModel) -> Parametric:
+    from Bio.SeqRecord import SeqRecord
+
+    meta = model.metadata
+    if not isinstance(meta, SeqMeta):
+        raise ValueError("Invalid metadata")
+
+    @configure_gui(
+        index={"bind": meta.current_index},
+        start={"bind": meta.selection[0]},
+    )
+    def run_translate(index: int, start: int) -> WidgetDataModel:
+        record = model.value[index]
+        assert isinstance(record, SeqRecord)
+        topology = record.annotations.get("topology", "linear")
+        if topology == "linear":
+            seq_ref = record.seq[start:]
+        elif topology == "circular":
+            seq_ref = record.seq[start:] + record.seq[:start]
+        else:
+            raise ValueError(f"Invalid topology: {topology!r}")
+        translations = seq_ref.translate(to_stop=True)
         return WidgetDataModel(value=[str(translations)], type=Type.PROTEIN)
 
     return run_translate
