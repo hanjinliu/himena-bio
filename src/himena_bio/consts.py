@@ -4,9 +4,11 @@ from himena.standards.model_meta import BaseMetadata
 
 class Type(SimpleNamespace):
     SEQS = "bio-seqs"
+    DNA_ABI = "bio-seqs.dna.abi"
     DNA = "bio-seqs.dna"
     RNA = "bio-seqs.rna"
     PROTEIN = "bio-seqs.protein"
+    ALIGNMENT = "bio-alignment"
 
 
 class Keys(SimpleNamespace):

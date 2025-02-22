@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from qtpy import QtWidgets as QtW
 from qtpy.QtCore import Qt
+from himena_bio.consts import Type
 
 
 class QBaseGraphicsScene(QtW.QGraphicsScene):
@@ -30,3 +31,28 @@ class QBaseGraphicsView(QtW.QGraphicsView):
 
     def scene(self) -> QBaseGraphicsScene:
         return super().scene()
+
+
+def char_to_qt_key(char: str) -> Qt.Key:
+    if char.isalnum():
+        return getattr(Qt.Key, f"Key_{char.upper()}")
+    if char == " ":
+        return Qt.Key.Key_Space
+    if char == "*":
+        return Qt.Key.Key_Asterisk
+    if char == "-":
+        return Qt.Key.Key_Minus
+    if char == "@":
+        return Qt.Key.Key_At
+    raise NotImplementedError(f"Unsupported character: {char}")
+
+
+def infer_seq_type(seq: str) -> str:
+    if set(seq) <= set("ATGCN"):
+        return Type.DNA
+    elif set(seq) <= set("AUGCNYRWSKMBDHV"):
+        return Type.RNA
+    elif set(seq) <= set("ACDEFGHIKLMNPQRSTVWY"):
+        return Type.PROTEIN
+    else:
+        raise ValueError("Unsupported sequence type.")

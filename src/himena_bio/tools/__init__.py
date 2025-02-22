@@ -1,3 +1,3 @@
-from himena_bio.tools import misc
+from himena_bio.tools import align, translate, misc
 
-del misc
+del align, translate, misc

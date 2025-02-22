@@ -8,12 +8,13 @@ from superqt import QElidingLabel
 from Bio.SeqIO import SeqRecord
 from Bio.SeqFeature import SeqFeature, SimpleLocation, CompoundLocation
 from Bio.Seq import Seq
-from Bio.SeqUtils import MeltingTemp as _Tm
+from Bio.SeqUtils import MeltingTemp
 
 from magicgui.widgets import Dialog
 from cmap import Color
 from himena import WidgetDataModel
 from himena.widgets import set_status_tip
+from himena.types import is_subtype
 from himena.qt.magicgui import get_type_map
 from himena.qt.magicgui._toggle_switch import QLabeledToggleSwitch
 from himena.consts import MonospaceFontFamily
@@ -21,18 +22,7 @@ from himena.plugins import validate_protocol
 from himena_bio.consts import Keys, ApeAnnotation, SeqMeta, Type
 from himena_bio._utils import parse_ape_color, get_feature_label
 from himena_bio.widgets._feature_view import QFeatureView
-
-
-def _char_to_qt_key(char: str) -> Qt.Key:
-    if char.isalnum():
-        return getattr(Qt.Key, f"Key_{char.upper()}")
-    if char == " ":
-        return Qt.Key.Key_Space
-    if char == "*":
-        return Qt.Key.Key_Asterisk
-    if char == "-":
-        return Qt.Key.Key_Minus
-    raise NotImplementedError(f"Unsupported character: {char}")
+from himena_bio.widgets._base import char_to_qt_key, infer_seq_type
 
 
 _KEYS_MOVE = frozenset(
@@ -324,7 +314,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
         }
 
     def set_keys_allowed(self, keys: Iterable[str]):
-        _keys = frozenset(_char_to_qt_key(char) for char in keys)
+        _keys = frozenset(char_to_qt_key(char) for char in keys)
         self._keys_allowed = _keys
 
 
@@ -353,11 +343,12 @@ class QMultiSeqEdit(QtW.QWidget):
         self._comment.setFixedHeight(80)
         layout.addWidget(self._comment)
 
-        self._tm_method: Callable[[Seq], float] = _Tm.Tm_GC
+        self._tm_method: Callable[[Seq], float] = MeltingTemp.Tm_GC
 
         self._control = QSeqControl(self)
         self._seq_edit.selectionChanged.connect(self._selection_changed)
         self._model_type = Type.DNA
+        self._extension_default = ".ape"
 
     @validate_protocol
     def update_model(self, model: WidgetDataModel):
@@ -365,7 +356,7 @@ class QMultiSeqEdit(QtW.QWidget):
         if len(recs) == 0:
             return
         choices: list[str] = []
-        recs_normed = []
+        recs_normed: list[SeqRecord] = []
         for rec in recs:
             if not isinstance(rec, SeqRecord):
                 rec = SeqRecord(Seq(rec))
@@ -374,15 +365,21 @@ class QMultiSeqEdit(QtW.QWidget):
         self._seq_choices.addItems(choices)
         self._set_record(recs_normed[0])
         self._seq_choices.setVisible(len(recs_normed) > 1)
-        self._model_type = model.type
-        if model.type == Type.DNA:
+        if model.type == Type.SEQS:
+            _mtype = infer_seq_type(str(recs_normed[0].seq))
+        else:
+            _mtype = model.type
+        if is_subtype(_mtype, Type.DNA):
             self._seq_edit.set_keys_allowed(Keys.DNA)
-        elif model.type == Type.RNA:
+        elif is_subtype(_mtype, Type.RNA):
             self._seq_edit.set_keys_allowed(Keys.RNA)
-        elif model.type == Type.PROTEIN:
+        elif is_subtype(_mtype, Type.PROTEIN):
             self._seq_edit.set_keys_allowed(Keys.PROTEIN)
         else:
-            raise NotImplementedError(f"Unsupported model type: {model.type}")
+            raise NotImplementedError(f"Unsupported model type: {_mtype}")
+        self._model_type = _mtype
+        if ext := model.extension_default:
+            self._extension_default = ext
 
     @validate_protocol
     def to_model(self) -> WidgetDataModel:
@@ -394,6 +391,7 @@ class QMultiSeqEdit(QtW.QWidget):
                 current_index=self._seq_choices.currentIndex(),
                 selection=(cursor.selectionStart(), cursor.selectionEnd()),
             ),
+            extension_default=self._extension_default,
         )
 
     @validate_protocol
