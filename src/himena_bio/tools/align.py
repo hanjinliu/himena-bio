@@ -89,4 +89,9 @@ def _pairwise_impl(
     seq1_record = cast_seq_record(seq1.value[0])
 
     alignments = aligner.align(seq0_record, seq1_record)
-    return WidgetDataModel(value=alignments, type=Type.ALIGNMENT)
+    return WidgetDataModel(
+        value=alignments,
+        type=Type.ALIGNMENT,
+        title="alignment.aln",
+        extension_default=".aln",
+    )

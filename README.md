@@ -7,6 +7,8 @@
 
 Plasmid editor and basic bioinformatic analysis in [`himena`](https://github.com/hanjinliu/himena).
 
+![](images/window.png)
+
 ## Installation
 
 ```console

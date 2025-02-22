@@ -61,6 +61,6 @@ exclude_lines = [
 ]
 
 [project.entry-points."himena.plugin"]
-"Plasmid Editor Widget" = "himena_bio.widgets"
+"Widgets" = "himena_bio.widgets"
 "Bio-Sequence IO" = "himena_bio.io"
 "Bio-Sequence Tools" = "himena_bio.tools"
