@@ -2,6 +2,7 @@ from himena import WidgetDataModel, Parametric
 from himena.plugins import register_function, configure_gui
 from himena_bio.consts import Type
 from himena_bio.tools._cast import cast_meta, cast_seq_record
+from himena_bio._utils import topology
 
 
 @register_function(
@@ -45,13 +46,13 @@ def translate_until_stop(model: WidgetDataModel) -> Parametric:
     )
     def run_translate(index: int, start: int) -> WidgetDataModel:
         record = cast_seq_record(model.value[index])
-        topology = record.annotations.get("topology", "linear")
-        if topology == "linear":
+        _topo = topology(record)
+        if _topo == "linear":
             seq_ref = record.seq[start:]
-        elif topology == "circular":
+        elif _topo == "circular":
             seq_ref = record.seq[start:] + record.seq[:start]
         else:
-            raise ValueError(f"Invalid topology: {topology!r}")
+            raise ValueError(f"Invalid topology: {_topo!r}")
         translations = seq_ref.translate(to_stop=True)
         return WidgetDataModel(
             value=[str(translations)],

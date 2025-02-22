@@ -85,4 +85,46 @@ def reverse_complement(model: WidgetDataModel) -> WidgetDataModel:
     return WidgetDataModel(value=out, type=model.type, title=f"RC of {model.title}")
 
 
-# TODO: PCR, InFusion, alignment, Restriction Digest, Ligation, fetch sequence, etc.
+# TODO: Restriction Digest, Ligation, fetch sequence, etc.
+
+
+@register_function(
+    menus="tools/biology",
+    types=[Type.DNA],
+    title="PCR",
+    command_id="himena-bio:prc",
+)
+def in_silico_pcr(model: WidgetDataModel) -> Parametric:
+    from himena_bio._func import pcr
+
+    def run_pcr(forward: str, reverse: str) -> WidgetDataModel:
+        out = []
+        for rec in model.value:
+            out.append(pcr(rec, forward, reverse))
+
+        return WidgetDataModel(
+            value=out, type=model.type, title=f"PCR of {model.title}"
+        )
+
+    return run_pcr
+
+
+@register_function(
+    menus="tools/biology",
+    title="In-Fusion",
+    command_id="himena-bio:in-fusion",
+)
+def in_silico_in_fusion() -> Parametric:
+    from himena_bio._func import in_fusion
+
+    @configure_gui(
+        vec={"types": [Type.DNA]},
+        insert={"types": [Type.DNA]},
+    )
+    def run_in_fusion(vec: WidgetDataModel, insert: WidgetDataModel) -> WidgetDataModel:
+        out = in_fusion(vec.value[0], insert.value[0])
+        return WidgetDataModel(
+            value=[out], type=vec.type, title=f"In-Fusion of {vec.title}"
+        )
+
+    return run_in_fusion

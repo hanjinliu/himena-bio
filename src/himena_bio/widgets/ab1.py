@@ -25,7 +25,8 @@ class QAB1View(QtW.QWidget):
     @validate_protocol
     def update_model(self, model: WidgetDataModel):
         self._model_type = model.type
-        self._extension_default = ".ab1"
+        if ext := model.extension_default:
+            self._extension_default = ext
         rec = model.value
         if isinstance(rec, list) and len(rec) == 1 and isinstance(rec[0], SeqRecord):
             rec = rec[0]

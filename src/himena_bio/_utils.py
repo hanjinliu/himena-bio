@@ -7,6 +7,7 @@ from cmap import Color
 
 if TYPE_CHECKING:
     from Bio.SeqFeature import SeqFeature
+    from Bio.SeqRecord import SeqRecord
 
 _GRAY_PATTERN = re.compile(r"gray(\d+)")
 
@@ -38,3 +39,7 @@ def feature_to_slice(feature: SeqFeature, nth: int) -> tuple[int, int]:
     else:
         raise NotImplementedError(f"Unknown location type: {type(loc)}")
     return start, end
+
+
+def topology(rec: SeqRecord) -> str:
+    return rec.annotations.get("topology", "linear")
