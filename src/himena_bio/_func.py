@@ -12,8 +12,8 @@ def _find_all_match(vec: Seq, primer: Seq):
 
 
 def find_match(vec: Seq, seq: Seq, min_match: int = 15) -> list["SimpleLocation"]:
-    r"""
-    Find all the primer binding sites.
+    r"""Find all the primer binding sites.
+
     _____ full match  ... OK
     ____/ flanking region contained ... OK
     __/\_ mismatch ... NG
@@ -71,40 +71,29 @@ def _do_pcr(
     f_match: tuple["Seq", "SimpleLocation"],
     r_match: tuple["Seq", "SimpleLocation"],
     rec: SeqRecord,
-):
-    # def _do_pcr(match: tuple["SimpleLocation", "SimpleLocation"], rec: SeqRecord):
+) -> SeqRecord:
     f_seq, f_loc = f_match
     r_seq, r_loc = r_match
-    if f_loc.start > r_loc.start:
-        f_loc, r_loc = r_loc, f_loc
-        f_seq, r_seq = r_seq, f_seq
-
-    if f_loc.strand == 1 and r_loc.strand == -1:
-        mf, mr = f_loc, r_loc
-        product_seq = rec[mf.start : mr.end]
-
-    elif topology(rec) == "linear":
-        raise ValueError("No PCR product obtained.")
-
+    if f_loc.start < r_loc.start:
+        product_seq = rec[f_loc.start : r_loc.end]
     else:
-        mr, mf = r_loc, f_loc
-        product_seq = (rec + rec)[mf.start : mr.end + len(rec)]
+        if topology(rec) == "linear":
+            raise ValueError("No PCR product obtained.")
+        product_seq = rec[f_loc.start :] + rec[: r_loc.end]
 
     # deal with flanking regions
-    out = len(f_seq) - len(mf)
+    out = len(f_seq) - len(f_loc)
     if out > 0:
         product_seq = f_seq[:out] + product_seq
-    out = len(r_seq) - len(mr)
+    out = len(r_seq) - len(r_loc)
     if out > 0:
         product_seq = product_seq + r_seq.reverse_complement()[-out:]
-        # product_seq = product_seq + mr.ref.r[-out:]
 
     return product_seq
 
 
 def pcr(self: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int = 15):
-    """
-    Conduct PCR using 'self' as the template DNA.
+    """Conduct PCR using 'self' as the template DNA.
 
     Parameters
     ----------
@@ -114,36 +103,37 @@ def pcr(self: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int 
         Sequence of reverse primer
     min_match : int, optional
         The minimum length of base match, by default 15
-
-    Returns
-    -------
-    DNA
-        The PCR product.
     """
     forward = Seq(forward)
     reverse = Seq(reverse)
-    matches = find_match(self.seq, forward, min_match) + find_match(
-        self.seq, reverse, min_match
-    )
+    match_f = find_match(self.seq, forward, min_match)
+    match_r = find_match(self.seq, reverse, min_match)
 
     # print result
-    if len(matches) == 0:
+    if len(match_f) + len(match_r) == 0:
         raise ValueError("No PCR product obtained. No match found.")
-    elif len(matches) == 1:
-        raise ValueError("No PCR product obtained. Only one match found.")
-    elif len(matches) > 2:
-        raise ValueError(f"Too many matches ({len(matches)} matches found).")
-    elif matches[0].strand == matches[1].strand:
+    elif len(match_f) == 0:
+        raise ValueError("No PCR product obtained. Only reverse primer matched.")
+    elif len(match_r) == 0:
+        raise ValueError("No PCR product obtained. Only forward primer matched.")
+    elif len(match_f) > 1 or len(match_r) > 1:
+        raise ValueError(
+            f"Too many matches: {len(match_f)} matches found for the forward primer, "
+            f"and {len(match_r)} matches found for the reverse primer."
+        )
+    elif match_f[0].strand == match_r[0].strand:
         raise ValueError("Each primer binds to the template in the same direction.")
+    elif match_f[0].strand == 1 and match_r[0].strand == -1:
+        ans = _do_pcr((forward, match_f[0]), (reverse, match_r[0]), self)
     else:
-        ans = _do_pcr((forward, matches[0]), (reverse, matches[1]), self)
+        ans = _do_pcr((reverse, match_r[0]), (forward, match_f[0]), self)
 
+    ans.annotations["topology"] = "linear"
     return ans
 
 
 def in_fusion(vec: SeqRecord, insert: SeqRecord):
-    """
-    Simulated In-Fusion.
+    """Simulated In-Fusion.
 
     Parameters
     ----------
@@ -165,20 +155,27 @@ def in_fusion(vec: SeqRecord, insert: SeqRecord):
     pos0 = len(vec) // 2
     frag_l, frag_r = vec[:pos0], vec[pos0:]
 
-    if frag_l[:15] != insert[-15:]:
+    if frag_l[:15].seq != insert[-15:].seq:
         raise ValueError(
             "Mismatch! Check carefully:\n"
-            f"--{insert[-20:]}\n"
-            f"       {frag_l[:20]}--"
+            f"--{insert[-20:].seq}\n"
+            f"       {frag_l[:20].seq}--"
         )
-    if frag_r[-15:] != insert[:15]:
+    if frag_r[-15:].seq != insert[:15].seq:
         raise ValueError(
             "Mismatch! Check carefully:\n"
-            f"       {insert[:20]}--\n"
-            f"--{frag_r[-20:]}"
+            f"       {insert[:20].seq}--\n"
+            f"--{frag_r[-20:].seq}"
         )
 
     frag_r = frag_r[: len(frag_r) - 15]
     frag_l = frag_l[15:]
     out = frag_r + insert + frag_l
     return out
+
+
+def is_circular_equal(seq1: Seq, seq2: Seq) -> bool:
+    """Check if two circular DNA sequences are equal."""
+    if len(seq1) != len(seq2):
+        return False
+    return str(seq1 * 2).find(str(seq2)) >= 0
