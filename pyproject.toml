@@ -65,6 +65,12 @@ exclude_lines = [
   "if TYPE_CHECKING:",
 ]
 
+[tool.hatch.envs.test]
+features = ["testing"]
+
+[tool.hatch.envs.test.scripts]
+run = "pytest -v --cov --cov-report=xml"
+
 [project.entry-points."himena.plugin"]
 "Widgets" = "himena_bio.widgets"
 "Bio-Sequence IO" = "himena_bio.io"
