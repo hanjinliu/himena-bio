@@ -28,6 +28,13 @@ dependencies = [
   "cmap>=0.5.0",
   "himena",
 ]
+[project.optional-dependencies]
+testing = [
+  "pytest>=6.0",
+  "pytest-qt",
+  "pytest-cov>=2.0",
+  "pyqt6",
+]
 
 [project.urls]
 Documentation = "https://github.com/hanjinliu/himena-bio#readme"
@@ -59,6 +66,12 @@ exclude_lines = [
   "if __name__ == .__main__.:",
   "if TYPE_CHECKING:",
 ]
+
+[tool.hatch.envs.test]
+features = ["testing"]
+
+[tool.hatch.envs.test.scripts]
+run = "pytest -v --cov --cov-report=xml"
 
 [project.entry-points."himena.plugin"]
 "Widgets" = "himena_bio.widgets"
