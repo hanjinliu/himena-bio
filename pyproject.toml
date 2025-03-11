@@ -28,6 +28,11 @@ dependencies = [
   "cmap>=0.5.0",
   "himena",
 ]
+[project.optional-dependencies]
+testing = [
+  "pytest>=6.0",
+  "pytest-cov>=2.0",
+]
 
 [project.urls]
 Documentation = "https://github.com/hanjinliu/himena-bio#readme"
