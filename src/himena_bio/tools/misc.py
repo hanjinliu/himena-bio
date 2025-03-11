@@ -92,9 +92,10 @@ def reverse_complement(model: WidgetDataModel) -> WidgetDataModel:
     menus="tools/biology",
     types=[Type.DNA],
     title="PCR",
-    command_id="himena-bio:prc",
+    command_id="himena-bio:pcr",
 )
 def in_silico_pcr(model: WidgetDataModel) -> Parametric:
+    """Simulate PCR."""
     from himena_bio._func import pcr
 
     def run_pcr(forward: str, reverse: str) -> WidgetDataModel:

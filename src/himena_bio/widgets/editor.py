@@ -106,13 +106,13 @@ class QSeqEdit(QtW.QPlainTextEdit):
         if _key in _KEYS_MOVE:
             return super().keyPressEvent(event)
         if _mod & Qt.KeyboardModifier.ControlModifier:
-            _shift_on = bool(_mod & Qt.KeyboardModifier.ShiftModifier)
+            _alt_on = bool(_mod & Qt.KeyboardModifier.AltModifier)
             if _key == Qt.Key.Key_C:
-                self._copy_selection(_shift_on)
+                self._copy_selection(_alt_on)
             elif _key == Qt.Key.Key_X:
-                self._cut_selection(_shift_on)
+                self._cut_selection(_alt_on)
             elif _key == Qt.Key.Key_V:
-                self._paste(_shift_on)
+                self._paste(_alt_on)
             return
         elif _mod & Qt.KeyboardModifier.AltModifier:
             return None

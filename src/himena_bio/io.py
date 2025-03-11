@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from Bio import SeqIO, AlignIO
 
 from himena import WidgetDataModel
+from himena.types import is_subtype
 from himena.plugins import register_reader_plugin, register_writer_plugin
 from himena_bio.consts import Type
 
@@ -35,7 +36,7 @@ def _(path: Path):
 
 
 @register_writer_plugin
-def write_dna(path: Path, model: WidgetDataModel):
+def write_dna(model: WidgetDataModel, path: Path):
     if path.suffix in [".gb", ".gbk", ".ape"] and model.type == Type.DNA:
         if len(model.value) == 1:
             SeqIO.write(model.value, path, "genbank")
@@ -48,8 +49,8 @@ def write_dna(path: Path, model: WidgetDataModel):
 
 
 @write_dna.define_matcher
-def _(path: Path, data: WidgetDataModel):
-    return data.type == Type.SEQS
+def _(model: WidgetDataModel, path: Path):
+    return is_subtype(model.type, Type.SEQS)
 
 
 @register_reader_plugin
