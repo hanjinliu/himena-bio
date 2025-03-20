@@ -4,7 +4,6 @@ from typing import Callable, Iterable
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
 from qtpy.QtCore import Qt
-from superqt import QElidingLabel
 from Bio.SeqIO import SeqRecord
 from Bio.SeqFeature import SeqFeature, SimpleLocation, CompoundLocation
 from Bio.Seq import Seq
@@ -16,14 +15,15 @@ from himena import WidgetDataModel
 from himena.widgets import set_status_tip
 from himena.types import is_subtype
 from himena.qt.magicgui import get_type_map
-from himena.qt.magicgui._toggle_switch import QLabeledToggleSwitch
 from himena.consts import MonospaceFontFamily
 from himena.plugins import validate_protocol
+from himena.utils.collections import UndoRedoStack
+
 from himena_bio.consts import Keys, ApeAnnotation, SeqMeta, Type
 from himena_bio._utils import parse_ape_color, get_feature_label
 from himena_bio.widgets._feature_view import QFeatureView
 from himena_bio.widgets._base import char_to_qt_key, infer_seq_type
-
+from himena_bio.widgets._editor_control import QSeqControl
 
 _KEYS_MOVE = frozenset(
     [Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
@@ -48,6 +48,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self.set_keys_allowed(Keys.DNA)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
+        self._undo_redo_stack = UndoRedoStack(size=20)
 
     def set_record(self, record: SeqRecord):
         self._record = record
@@ -268,7 +269,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
         features = self._features_under_pos(pos)
         return features[-1]
 
-    def _edit_feature(self, feature):
+    def _edit_feature(self, feature: SeqFeature):
         kwargs = self._feature_qualifiers_from_dialog(
             name=feature.type,
             fcolor=feature.qualifiers.get(ApeAnnotation.FWCOLOR, ["cyan"])[0],
@@ -278,16 +279,18 @@ class QSeqEdit(QtW.QPlainTextEdit):
         feature.qualifiers.update(kwargs["qualifiers"])
         self.update_highlight()
 
-    def _delete_feature(self, feature):
+    def _delete_feature(self, feature: SeqFeature):
+        """Delete the feature from the current record."""
         self._record.features.remove(feature)
         self.update_highlight()
 
-    def _move_feature_front(self, feature):
+    def _move_feature_front(self, feature: SeqFeature):
+        """Make sure the feature is visible by moving it the last of the list."""
         self._record.features.remove(feature)
         self._record.features.append(feature)
         self.update_highlight()
 
-    def _move_feature_back(self, feature):
+    def _move_feature_back(self, feature: SeqFeature):
         self._record.features.remove(feature)
         self._record.features.insert(0, feature)
         self.update_highlight()
@@ -319,6 +322,8 @@ class QSeqEdit(QtW.QPlainTextEdit):
 
 
 class QMultiSeqEdit(QtW.QWidget):
+    """Sequence editor widget."""
+
     def __init__(self, parent=None):
         super().__init__(parent)
         layout = QtW.QVBoxLayout(self)
@@ -498,78 +503,6 @@ class QMultiSeqEdit(QtW.QWidget):
         else:
             self._control._feature_label.setText("")
         self._control._hover_pos.set_value(str(nth))
-
-
-class QSeqControl(QtW.QWidget):
-    def __init__(self, edit: QMultiSeqEdit):
-        super().__init__()
-        self._edit = edit
-        layout = QtW.QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self._feature_label = QElidingLabel()
-        self._feature_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self._feature_label, stretch=10)
-        self._is_one_start = QLabeledToggleSwitch()
-        self._is_one_start.setText("1-start")
-        self._is_one_start.setToolTip(
-            "Toggle between 0-based (Python style) and 1-based (ApE style) numbering for base positions."
-        )
-        self._is_one_start.toggled.connect(edit._selection_changed)
-        layout.addWidget(self._is_one_start)
-
-        self._hover_pos = QVParam("Pos", width=36, tooltip="Hovered position")
-        layout.addWidget(self._hover_pos)
-
-        self._sel = QVParam(
-            "Selection", width=70, tooltip="Current text cursor selection"
-        )
-        layout.addWidget(self._sel)
-
-        self._length = QVParam(
-            "Length", width=45, tooltip="Length of the current text cursor selection"
-        )
-        layout.addWidget(self._length)
-
-        self._tm = QVParam("Tm", width=40, tooltip="The calculated melting temperature")
-        layout.addWidget(self._tm)
-        self._percent_gc = QVParam(
-            "%GC",
-            width=45,
-            tooltip="Percentage of GC content at the text cursor selection.",
-        )
-        layout.addWidget(self._percent_gc)
-
-        self._topology = QtW.QComboBox()
-        self._topology.setToolTip("Topology of the sequence.")
-        self._topology.addItems(["linear", "circular"])
-        self._topology.setFixedWidth(72)
-        layout.addWidget(self._topology)
-
-
-class QVParam(QtW.QWidget):
-    def __init__(self, label: str, width: int = 96, tooltip: str = ""):
-        super().__init__()
-        layout = QtW.QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(1)
-        self._label = QtW.QLabel(label)
-        self._value = QtW.QLabel()
-        font = self._label.font()
-        font.setPointSize(8)
-        font.setBold(True)
-        self._label.setFont(font)
-        layout.addWidget(self._label)
-        layout.addWidget(self._value)
-        self.setFixedWidth(width)
-        self.setToolTip(tooltip)
-
-    def set_value(self, value: str):
-        self._value.setText(value)
-
-    def set_visible(self, visible: bool):
-        self._label.setVisible(visible)
-        self._value.setVisible(visible)
 
 
 def _shift_feature(feature: SeqFeature, start: int, shift: int):
