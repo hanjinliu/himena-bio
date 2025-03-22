@@ -24,6 +24,7 @@ from himena_bio._utils import parse_ape_color, get_feature_label
 from himena_bio.widgets._feature_view import QFeatureView
 from himena_bio.widgets._base import char_to_qt_key, infer_seq_type
 from himena_bio.widgets._editor_control import QSeqControl
+from himena_bio.widgets import _editor_actions as _ea
 
 _KEYS_MOVE = frozenset(
     [Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
@@ -48,7 +49,12 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self.set_keys_allowed(Keys.DNA)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
-        self._undo_redo_stack = UndoRedoStack(size=20)
+        self._undo_redo_stack = UndoRedoStack[_ea.EditorAction](size=100)
+        self._data_modified = False
+
+        @self.edited.connect
+        def _():
+            self._data_modified = True
 
     def set_record(self, record: SeqRecord):
         self._record = record
@@ -114,6 +120,10 @@ class QSeqEdit(QtW.QPlainTextEdit):
                 self._cut_selection(_alt_on)
             elif _key == Qt.Key.Key_V:
                 self._paste(_alt_on)
+            elif _key == Qt.Key.Key_Z and not _alt_on:
+                self.undo()
+            elif _key == Qt.Key.Key_Y and not _alt_on:
+                self.redo()
             return
         elif _mod & Qt.KeyboardModifier.AltModifier:
             return None
@@ -148,33 +158,82 @@ class QSeqEdit(QtW.QPlainTextEdit):
         seq = clipboard.text()
         if rev_comp:
             seq = str(Seq(seq).reverse_complement())
-        self.textCursor().insertText(seq)
+        self.insert_text(seq, self.textCursor())
 
     def _cut_selection(self, rev_comp: bool = False):
         self._copy_selection(rev_comp)
-        self.textCursor().removeSelectedText()
+        self.delete_text(self.textCursor())
 
-    def insert_text(self, text: str, cursor: QtGui.QTextCursor):
+    def insert_text(
+        self,
+        text: str,
+        cursor: QtGui.QTextCursor,
+        record_undo: bool = True,
+    ):
+        """Insert the text using the given text cursor."""
         start = cursor.selectionStart()
+        actions = [_ea.InsertSeqAction(pos=self.textCursor().position(), seq=text)]
         if cursor.hasSelection():
+            actions.append(
+                _ea.DeleteSeqAction(
+                    start=cursor.selectionStart(),
+                    length=cursor.selectionEnd() - cursor.selectionStart(),
+                    seq=cursor.selectedText(),
+                )
+            )
             self.delete_text(cursor)
             cursor.clearSelection()
         nchars = len(text)
-        for feature in self._record.features:
-            _shift_feature(feature, start, nchars)
+        for index, feature in enumerate(self._record.features):
+            if (feature_shifted := _shift_feature(feature, start, nchars)) is not None:
+                action = _ea.EditFeatureAction(
+                    index=index, old=feature, new=feature_shifted
+                )
+                action.apply(self)
+                actions.append(action)
 
         cursor.insertText(text)
         self.update_highlight()
+        if record_undo:
+            self._undo_redo_stack.push(_ea.CompositeAction(actions))
 
-    def delete_text(self, cursor: QtGui.QTextCursor):
+    def delete_text(self, cursor: QtGui.QTextCursor, record_undo: bool = True):
+        """Delete the selected text using the given text cursor."""
         if not cursor.hasSelection():
             raise ValueError("No text selected")
         start = cursor.selectionStart()
         nchars = cursor.selectionEnd() - start
-        for feature in self._record.features:
-            _shift_feature(feature, start, -nchars)
+        actions = [
+            _ea.DeleteSeqAction(
+                start=start,
+                length=nchars,
+                seq=cursor.selectedText(),
+            )
+        ]
+        for index, feature in enumerate(self._record.features):
+            if (feature_shifted := _shift_feature(feature, start, -nchars)) is not None:
+                action = _ea.EditFeatureAction(
+                    index=index, old=feature, new=feature_shifted
+                )
+                action.apply(self)
+                actions.append(action)
         cursor.removeSelectedText()
         self.update_highlight()
+        if record_undo:
+            self._undo_redo_stack.push(_ea.CompositeAction(actions))
+
+    def undo(self):
+        """Undo the last edit action."""
+        if action := self._undo_redo_stack.undo():
+            action.invert().apply(self)
+        return None
+
+    def redo(self):
+        """Redo the last undone edit action."""
+        if action := self._undo_redo_stack.redo():
+            print(action)
+            action.apply(self)
+        return None
 
     def _backspace_event(self):
         cursor = self.textCursor()
@@ -261,7 +320,11 @@ class QSeqEdit(QtW.QPlainTextEdit):
             location=SimpleLocation(start, end),
             **self._feature_qualifiers_from_dialog(),
         )
+        index = len(self._record.features)
         self._record.features.append(feature)
+        self._undo_redo_stack.push(
+            _ea.EditFeatureAction(index=index, old=None, new=feature)
+        )
         self.update_highlight()
 
     def _get_front_feature(self) -> SeqFeature:
@@ -275,25 +338,46 @@ class QSeqEdit(QtW.QPlainTextEdit):
             fcolor=feature.qualifiers.get(ApeAnnotation.FWCOLOR, ["cyan"])[0],
             rcolor=feature.qualifiers.get(ApeAnnotation.RVCOLOR, ["cyan"])[0],
         )
-        feature.type = feature.id = kwargs["type"]
-        feature.qualifiers.update(kwargs["qualifiers"])
+        index = self._record.features.index(feature)
+        feature_new = copy_feature(feature)
+        feature_new.type = feature_new.id = kwargs["type"]
+        feature_new.qualifiers = feature_new.qualifiers.copy()
+        feature_new.qualifiers.update(kwargs["qualifiers"])
+        self._record.features[index] = feature_new
         self.update_highlight()
+        self._undo_redo_stack.push(
+            _ea.EditFeatureAction(index=index, old=feature, new=feature_new)
+        )
 
     def _delete_feature(self, feature: SeqFeature):
         """Delete the feature from the current record."""
-        self._record.features.remove(feature)
+        index = self._record.features.index(feature)
+        self._record.features.pop(index)
         self.update_highlight()
+        self._undo_redo_stack.push(
+            _ea.EditFeatureAction(index=index, old=feature, new=None)
+        )
 
     def _move_feature_front(self, feature: SeqFeature):
         """Make sure the feature is visible by moving it the last of the list."""
-        self._record.features.remove(feature)
-        self._record.features.append(feature)
+        old = self._record.features.index(feature)
+        new = len(self._record.features)
+        if old == new:
+            return
+        action = _ea.MoveFeatureAction(old=old, new=new)
+        action.apply(self)
         self.update_highlight()
+        self._undo_redo_stack.push(action)
 
     def _move_feature_back(self, feature: SeqFeature):
-        self._record.features.remove(feature)
-        self._record.features.insert(0, feature)
+        old = self._record.features.index(feature)
+        new = 0
+        if old == new:
+            return
+        action = _ea.MoveFeatureAction(old=old, new=new)
+        action.apply(self)
         self.update_highlight()
+        self._undo_redo_stack.push(action)
 
     def _feature_qualifiers_from_dialog(
         self,
@@ -412,6 +496,10 @@ class QMultiSeqEdit(QtW.QWidget):
         return 400, 400
 
     @validate_protocol
+    def is_modified(self) -> bool:
+        return self._seq_edit._data_modified
+
+    @validate_protocol
     def widget_added_callback(self):
         self._feature_view.auto_range()
 
@@ -505,7 +593,8 @@ class QMultiSeqEdit(QtW.QWidget):
         self._control._hover_pos.set_value(str(nth))
 
 
-def _shift_feature(feature: SeqFeature, start: int, shift: int):
+def _shift_feature(feature: SeqFeature, start: int, shift: int) -> SeqFeature | None:
+    """Shift the feature by the given amount, return None if not shifted."""
     if isinstance(loc := feature.location, SimpleLocation):
         if loc.end > start:
             start_new, end_new = loc.start, loc.end
@@ -513,7 +602,7 @@ def _shift_feature(feature: SeqFeature, start: int, shift: int):
             if loc.start >= start:
                 start_new += shift
             loc_new = SimpleLocation(start_new, end_new)
-            feature.location = loc_new
+            return copy_feature(feature, loc_new)
     elif isinstance(loc := feature.location, CompoundLocation):
         new_parts: list[SimpleLocation] = []
         for part in loc:
@@ -526,7 +615,8 @@ def _shift_feature(feature: SeqFeature, start: int, shift: int):
                 part_new = SimpleLocation(start_new, end_new)
             new_parts.append(part_new)
         loc_new = CompoundLocation(new_parts)
-        feature.location = loc_new
+        return copy_feature(feature, loc_new)
+    return None
 
 
 def _remove_ape_meta(comment: str) -> str:
@@ -534,3 +624,17 @@ def _remove_ape_meta(comment: str) -> str:
     if lines and lines[-1].startswith("ApEinfo:methylated:"):
         lines.pop(-1)
     return "\n".join(lines)
+
+
+def copy_feature(
+    feature: SeqFeature, loc: SimpleLocation | CompoundLocation | None = None
+) -> SeqFeature:
+    """Shallow copy of a SeqFeature, optionally with a new location."""
+    if loc is None:
+        loc = feature.location
+    return SeqFeature(
+        location=loc,
+        type=feature.type,
+        id=feature.id,
+        qualifiers={k: v for k, v in feature.qualifiers.items()},
+    )
