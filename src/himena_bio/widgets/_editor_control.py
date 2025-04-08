@@ -3,9 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from qtpy import QtWidgets as QtW
 from qtpy.QtCore import Qt
-from superqt import QElidingLabel
-
-from himena.qt.magicgui._toggle_switch import QLabeledToggleSwitch
+from superqt import QElidingLabel, QToggleSwitch
 
 if TYPE_CHECKING:
     from himena_bio.widgets.editor import QMultiSeqEdit
@@ -21,7 +19,7 @@ class QSeqControl(QtW.QWidget):
         self._feature_label = QElidingLabel()
         self._feature_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._feature_label, stretch=10)
-        self._is_one_start = QLabeledToggleSwitch()
+        self._is_one_start = QToggleSwitch()
         self._is_one_start.setText("1-start")
         self._is_one_start.setToolTip(
             "Toggle between 0-based (Python style) and 1-based (ApE style) numbering for base positions."
