@@ -62,7 +62,7 @@ class InsertSeqAction(EditorAction):
     def apply(self, widget: QSeqEdit):
         cursor = widget.textCursor()
         cursor.setPosition(self.pos)
-        widget.insert_text(self.seq, cursor, record_undo=False)
+        cursor.insertText(self.seq)
 
     def invert(self) -> Self:
         return DeleteSeqAction(start=self.pos, length=len(self.seq), seq=self.seq)
@@ -80,7 +80,7 @@ class DeleteSeqAction(EditorAction):
         cursor.setPosition(
             self.start + self.length, QtGui.QTextCursor.MoveMode.KeepAnchor
         )
-        widget.delete_text(cursor, record_undo=False)
+        cursor.removeSelectedText()
 
     def invert(self) -> Self:
         return InsertSeqAction(pos=self.start, seq=self.seq)

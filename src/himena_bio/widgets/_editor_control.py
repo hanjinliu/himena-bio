@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 class QSeqControl(QtW.QWidget):
     def __init__(self, edit: QMultiSeqEdit):
         super().__init__()
-        self._edit = edit
         layout = QtW.QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 

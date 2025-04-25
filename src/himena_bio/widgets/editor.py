@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import Callable, Iterable
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
@@ -49,12 +50,57 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self.set_keys_allowed(Keys.DNA)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
+        self._actions: dict[str, QtW.QAction] = {}
+        self._setup_actions()
         self._undo_redo_stack = UndoRedoStack[_ea.EditorAction](size=100)
         self._data_modified = False
+        self._pend_update_highlight = False
 
         @self.edited.connect
         def _():
             self._data_modified = True
+
+    def _setup_actions(self):
+        """Setup actions for keyboard shortcuts and context menu."""
+
+        def add_action(name: str, shortcut: str, callback):
+            action = QtW.QAction(name, self)
+            action.setShortcut(shortcut)
+            action.triggered.connect(callback)
+            action.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+            self._actions[name] = action
+            self.addAction(action)
+
+        add_action("Copy", "Ctrl+C", lambda: self._copy_selection(False))
+        add_action("Cut", "Ctrl+X", lambda: self._cut_selection(False))
+        add_action("Paste", "Ctrl+V", lambda: self._paste(False))
+        add_action("Undo", "Ctrl+Z", self.undo)
+        add_action("Redo", "Ctrl+Y", self.redo)
+        add_action("Find", "Ctrl+F", self._open_finder)
+        add_action("Copy (RevComp)", "Ctrl+Alt+C", lambda: self._copy_selection(True))
+        add_action("Cut (RevComp)", "Ctrl+Alt+X", lambda: self._cut_selection(True))
+        add_action("Paste (RevComp)", "Ctrl+Alt+V", lambda: self._paste(True))
+        add_action("New Feature", "Alt+N", self._new_feature)
+        add_action(
+            "Edit Feature",
+            "Alt+E",
+            lambda: self._edit_feature(self._get_front_feature()),
+        )
+        add_action(
+            "Delete Feature",
+            "Alt+D",
+            lambda: self._delete_feature(self._get_front_feature()),
+        )
+        add_action(
+            "Move Feature Front",
+            "Alt+F",
+            lambda: self._move_feature_front(self._get_front_feature()),
+        )
+        add_action(
+            "Move Feature Back",
+            "Alt+B",
+            lambda: self._move_feature_back(self._get_front_feature()),
+        )
 
     def set_record(self, record: SeqRecord):
         self._record = record
@@ -63,6 +109,8 @@ class QSeqEdit(QtW.QPlainTextEdit):
         return None
 
     def update_highlight(self):
+        if self._pend_update_highlight:
+            return
         cursor = self.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.Start)
         cursor.movePosition(
@@ -93,7 +141,6 @@ class QSeqEdit(QtW.QPlainTextEdit):
                     )
                     cursor.setCharFormat(format)
         self.edited.emit()
-        return None
 
     def to_record(self) -> SeqRecord:
         return SeqRecord(
@@ -118,6 +165,8 @@ class QSeqEdit(QtW.QPlainTextEdit):
                 self._copy_selection(_alt_on)
             elif _key == Qt.Key.Key_X:
                 self._cut_selection(_alt_on)
+            elif _key == Qt.Key.Key_A:
+                self.selectAll()
             elif _key == Qt.Key.Key_V:
                 self._paste(_alt_on)
             elif _key == Qt.Key.Key_Z and not _alt_on:
@@ -164,6 +213,16 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self._copy_selection(rev_comp)
         self.delete_text(self.textCursor())
 
+    @contextmanager
+    def pend_update_highlight(self):
+        """Pend calling update_highlight in this context."""
+        was_pending = self._pend_update_highlight
+        self._pend_update_highlight = True
+        try:
+            yield
+        finally:
+            self._pend_update_highlight = was_pending
+
     def insert_text(
         self,
         text: str,
@@ -172,7 +231,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
     ):
         """Insert the text using the given text cursor."""
         start = cursor.selectionStart()
-        actions = [_ea.InsertSeqAction(pos=self.textCursor().position(), seq=text)]
+        actions = []
         if cursor.hasSelection():
             actions.append(
                 _ea.DeleteSeqAction(
@@ -181,7 +240,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
                     seq=cursor.selectedText(),
                 )
             )
-            self.delete_text(cursor)
+            self.delete_text(cursor, record_undo=False)
             cursor.clearSelection()
         nchars = len(text)
         for index, feature in enumerate(self._record.features):
@@ -191,7 +250,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
                 )
                 action.apply(self)
                 actions.append(action)
-
+        actions.append(_ea.InsertSeqAction(pos=start, seq=text))
         cursor.insertText(text)
         self.update_highlight()
         if record_undo:
@@ -226,14 +285,20 @@ class QSeqEdit(QtW.QPlainTextEdit):
         """Undo the last edit action."""
         if action := self._undo_redo_stack.undo():
             action.invert().apply(self)
+            with self.pend_update_highlight():
+                self.update_highlight()
         return None
 
     def redo(self):
         """Redo the last undone edit action."""
         if action := self._undo_redo_stack.redo():
-            print(action)
             action.apply(self)
+            with self.pend_update_highlight():
+                self.update_highlight()
         return None
+
+    def _open_finder(self):
+        print("finder")
 
     def _backspace_event(self):
         cursor = self.textCursor()
@@ -255,49 +320,20 @@ class QSeqEdit(QtW.QPlainTextEdit):
 
     def _make_context_menu(self) -> QtW.QMenu:
         menu = QtW.QMenu()
-        cursor = self.textCursor()
-        pos = cursor.position()
-
-        cut_action = menu.addAction("Cut", self._cut_selection)
-        cut_rc_action = menu.addAction(
-            "Cut (RevComp)", lambda: self._cut_selection(True)
-        )
-        copy_action = menu.addAction("Copy", self._copy_selection)
-        copy_rc_action = menu.addAction(
-            "Copy (RevComp)", lambda: self._copy_selection(True)
-        )
-        paste_action = menu.addAction("Paste", self._paste)
+        menu.addAction(self._actions["Cut"])
+        menu.addAction(self._actions["Cut (RevComp)"])
+        menu.addAction(self._actions["Copy"])
+        menu.addAction(self._actions["Copy (RevComp)"])
+        menu.addAction(self._actions["Paste"])
         menu.addSeparator()
-        new_feature_action = menu.addAction("New Feature", self._new_feature)
-        edit_feature_action = menu.addAction(
-            "Edit Feature", lambda: self._edit_feature(self._get_front_feature())
-        )
-        del_feature_action = menu.addAction(
-            "Delete Feature", lambda: self._delete_feature(self._get_front_feature())
-        )
-        move_feature_front_action = menu.addAction(
-            "Move Feature Front",
-            lambda: self._move_feature_front(self._get_front_feature()),
-        )
-        move_feature_back_action = menu.addAction(
-            "Move Feature Back",
-            lambda: self._move_feature_back(self._get_front_feature()),
-        )
-        if not cursor.hasSelection():
-            cut_action.setEnabled(False)
-            cut_rc_action.setEnabled(False)
-            copy_action.setEnabled(False)
-            copy_rc_action.setEnabled(False)
-            new_feature_action.setEnabled(False)
-            move_feature_front_action.setEnabled(False)
-            move_feature_back_action.setEnabled(False)
-
-        if len(self._features_under_pos(pos)) == 0:
-            edit_feature_action.setEnabled(False)
-            del_feature_action.setEnabled(False)
+        menu.addAction(self._actions["New Feature"])
+        menu.addAction(self._actions["Edit Feature"])
+        menu.addAction(self._actions["Delete Feature"])
+        menu.addAction(self._actions["Move Feature Front"])
+        menu.addAction(self._actions["Move Feature Back"])
 
         if QtW.QApplication.clipboard().text() == "":
-            paste_action.setEnabled(False)
+            self._actions["Paste"].setEnabled(False)
         return menu
 
     def _show_context_menu(self, pos: QtCore.QPoint):
@@ -436,6 +472,7 @@ class QMultiSeqEdit(QtW.QWidget):
 
         self._control = QSeqControl(self)
         self._seq_edit.selectionChanged.connect(self._selection_changed)
+        self._seq_edit.cursorPositionChanged.connect(self._selection_changed)
         self._model_type = Type.DNA
         self._extension_default = ".ape"
 
@@ -444,6 +481,7 @@ class QMultiSeqEdit(QtW.QWidget):
         recs = model.value
         if len(recs) == 0:
             return
+        was_empty = self._seq_choices.count() == 0
         choices: list[str] = []
         recs_normed: list[SeqRecord] = []
         for rec in recs:
@@ -469,6 +507,8 @@ class QMultiSeqEdit(QtW.QWidget):
         self._model_type = _mtype
         if ext := model.extension_default:
             self._extension_default = ext
+        if was_empty:
+            self._seq_edit._data_modified = False
 
     @validate_protocol
     def to_model(self) -> WidgetDataModel:
@@ -525,14 +565,16 @@ class QMultiSeqEdit(QtW.QWidget):
             )
             self._control._length.set_value(str(len(selection)))
             gc_count = sum(1 for nucleotide in selection if nucleotide in "GC")
-            self._control._percent_gc.set_value(
-                f"{(gc_count / len(selection)) * 100:.2f}%"
-            )
-            tm = self._tm_method(Seq(selection))
-            if tm < 0:
-                self._control._tm.set_value("-- °C")
-            else:
-                self._control._tm.set_value(f"{tm:.1f}°C")
+            # nucleotide specific info
+            if self.model_type() in (Type.DNA, Type.RNA):
+                self._control._percent_gc.set_value(
+                    f"{(gc_count / len(selection)) * 100:.2f}%"
+                )
+                tm = self._tm_method(Seq(selection))
+                if tm < 0:
+                    self._control._tm.set_value("-- °C")
+                else:
+                    self._control._tm.set_value(f"{tm:.1f}°C")
             _visible = True
         else:
             pos = cursor.position() + offset
@@ -542,12 +584,24 @@ class QMultiSeqEdit(QtW.QWidget):
         self._control._tm.set_visible(_visible)
         self._control._percent_gc.set_visible(_visible)
 
-        # translate the selection and show in status tip
-        adjusted_length = len(selection) // 3 * 3
-        amino_acids = str(Seq(selection[:adjusted_length]).translate())
-        if len(amino_acids) > 20:
-            amino_acids = amino_acids[:10] + "..." + amino_acids[-10:]
-        set_status_tip(amino_acids, duration=5)
+        if self.model_type() in (Type.DNA, Type.RNA):
+            # translate the selection and show in status tip
+            adjusted_length = len(selection) // 3 * 3
+            amino_acids = str(Seq(selection[:adjusted_length]).translate())
+            if len(amino_acids) > 20:
+                amino_acids = amino_acids[:10] + "..." + amino_acids[-10:]
+            set_status_tip(amino_acids, duration=5)
+
+        has_selection = cursor.hasSelection()
+        self._seq_edit._actions["Cut"].setEnabled(has_selection)
+        self._seq_edit._actions["Cut (RevComp)"].setEnabled(has_selection)
+        self._seq_edit._actions["Copy"].setEnabled(has_selection)
+        self._seq_edit._actions["Copy (RevComp)"].setEnabled(has_selection)
+        self._seq_edit._actions["New Feature"].setEnabled(has_selection)
+
+        has_feature = len(self._seq_edit._features_under_pos(cursor.position())) > 0
+        self._seq_edit._actions["Edit Feature"].setEnabled(has_feature)
+        self._seq_edit._actions["Delete Feature"].setEnabled(has_feature)
 
     def _seq_edit_hovered(self, pos: int | None):
         if pos is None:
