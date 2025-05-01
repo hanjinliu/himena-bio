@@ -5,9 +5,9 @@ from typing import Callable, Iterable
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
 from qtpy.QtCore import Qt
+from Bio.Seq import Seq
 from Bio.SeqIO import SeqRecord
 from Bio.SeqFeature import SeqFeature, SimpleLocation, CompoundLocation
-from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp
 
 from magicgui.widgets import Dialog
@@ -23,6 +23,7 @@ from himena.utils.collections import UndoRedoStack
 from himena_bio.consts import Keys, ApeAnnotation, SeqMeta, Type
 from himena_bio._utils import parse_ape_color, get_feature_label
 from himena_bio.widgets._feature_view import QFeatureView
+from himena_bio.widgets._editor_finder import QSeqFinder
 from himena_bio.widgets._base import char_to_qt_key, infer_seq_type
 from himena_bio.widgets._editor_control import QSeqControl
 from himena_bio.widgets import _editor_actions as _ea
@@ -298,7 +299,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
         return None
 
     def _open_finder(self):
-        print("finder")
+        self.parentWidget()._finder_widget.show()
 
     def _backspace_event(self):
         cursor = self.textCursor()
@@ -449,15 +450,20 @@ class QMultiSeqEdit(QtW.QWidget):
         layout = QtW.QVBoxLayout(self)
 
         self._seq_choices = QtW.QComboBox(self)
+        self._feature_view = QFeatureView(self)
+        self._seq_edit = QSeqEdit(self)
+        self._finder_widget = QSeqFinder(self, self._seq_edit)
+
         layout.addWidget(self._seq_choices)
 
-        self._feature_view = QFeatureView(self)
         self._feature_view.setFixedHeight(40)
         self._feature_view.clicked.connect(self._on_view_clicked)
         self._feature_view.hovered.connect(self._on_view_hovered)
         layout.addWidget(self._feature_view)
 
-        self._seq_edit = QSeqEdit(self)
+        layout.addWidget(self._finder_widget)
+        self._finder_widget.hide()
+
         self._seq_edit.hovered.connect(self._seq_edit_hovered)
         self._seq_edit.edited.connect(self._seq_edited)
         layout.addWidget(self._seq_edit)
