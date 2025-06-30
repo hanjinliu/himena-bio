@@ -8,7 +8,7 @@ from himena_bio.tools._cast import cast_seq_record
 @register_function(
     menus="tools/biology/align",
     title="Global Pairwise Alignment",
-    command_id="himena-bio:align:global-pairwise",
+    command_id="himena-bio:global-pairwise",
 )
 def global_pairwise_alignment(tab: TabArea) -> Parametric:
     """Perform a global pairwise alignment."""
@@ -39,7 +39,7 @@ def global_pairwise_alignment(tab: TabArea) -> Parametric:
 @register_function(
     menus="tools/biology/align",
     title="Local Pairwise Alignment",
-    command_id="himena-bio:align:local-pairwise",
+    command_id="himena-bio:local-pairwise",
 )
 def local_pairwise_alignment() -> Parametric:
     """Perform a local pairwise alignment."""

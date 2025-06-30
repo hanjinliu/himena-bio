@@ -1,4 +1,4 @@
-from himena import Parametric, WidgetDataModel, StandardType
+from himena import MainWindow, Parametric, WidgetDataModel, StandardType
 from himena.consts import MenuId
 from himena.plugins import register_function, configure_gui
 from himena_bio.consts import Type
@@ -123,6 +123,7 @@ def in_silico_pcr(model: WidgetDataModel) -> Parametric:
     group="nucleotide",
 )
 def in_silico_gibson_assembly() -> Parametric:
+    """Simulate cloning by Gibson assembly."""
     from himena_bio._func import gibson_assembly, gibson_assembly_single
 
     @configure_gui(
@@ -149,20 +150,9 @@ def in_silico_gibson_assembly() -> Parametric:
     command_id="himena-bio:gibson-assembly-this",
     group="nucleotide",
 )
-def in_silico_gibson_assembly_this(model: WidgetDataModel) -> Parametric:
-    from himena_bio._func import gibson_assembly, gibson_assembly_single
-
-    @configure_gui(insert={"types": [Type.DNA]})
-    def run_gibson(
-        insert: WidgetDataModel | None = None,
-    ) -> WidgetDataModel:
-        if insert is None:
-            out = gibson_assembly_single(model.value[0])
-        else:
-            out = gibson_assembly(model.value[0], insert.value[0])
-        return WidgetDataModel(value=[out], type=model.type)
-
-    return run_gibson
+def in_silico_gibson_assembly_this(model: WidgetDataModel, ui: MainWindow):
+    """Simulate cloning by Gibson assembly."""
+    return ui.exec_action("himena-bio:gibson-assembly", with_defaults={"vec": model})
 
 
 @register_function(
