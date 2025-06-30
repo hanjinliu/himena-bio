@@ -156,7 +156,10 @@ def gibson_assembly_single(
         raise ValueError(f"`{seq.name}` is too short.")
 
     overlap = _find_gibson_overlap(seq, seq, overlap_range)
-    return slice_seq_record(seq, slice(overlap, None))
+    num = len(seq) // 2
+    return slice_seq_record(seq, slice(num, None)) + slice_seq_record(
+        seq, slice(overlap, num)
+    )
 
 
 def gibson_assembly(vec: SeqRecord, insert: SeqRecord | None = None):
@@ -212,3 +215,42 @@ def is_circular_equal(seq1: Seq, seq2: Seq) -> bool:
     if len(seq1) != len(seq2):
         return False
     return str(seq1 * 2).find(str(seq2)) >= 0
+
+
+def sequencing(vec: SeqRecord, primer: str | Seq, length: int = 1000) -> SeqRecord:
+    """Simulate Sanger sequencing by primer.
+
+    Parameters
+    ----------
+    vec : SeqRecord
+        The vector to be sequenced.
+    primer : Seq
+        The primer to be used for sequencing.
+
+    Returns
+    -------
+    SeqRecord
+        The sequenced product.
+    """
+    matches = find_match(vec.seq, Seq(primer))
+    if not matches:
+        raise ValueError("No match found for the primer.")
+    if len(matches) > 1:
+        raise ValueError("Multiple matches found for the primer.")
+    m0 = matches[0]
+    if m0.strand == 1:
+        if topology(vec) == "circular":
+            all_seq = slice_seq_record(vec, slice(m0.start, None)) + slice_seq_record(
+                vec, slice(None, m0.start)
+            )
+        else:
+            all_seq = slice_seq_record(vec, slice(m0.start, None))
+    else:
+        if topology(vec) == "circular":
+            all_seq = slice_seq_record(vec, slice(m0.end, None)) + slice_seq_record(
+                vec, slice(None, m0.end)
+            )
+        else:
+            all_seq = slice_seq_record(vec, slice(None, m0.end))
+        all_seq = all_seq.reverse_complement()
+    return slice_seq_record(all_seq, slice(0, length))

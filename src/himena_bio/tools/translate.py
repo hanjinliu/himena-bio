@@ -11,6 +11,7 @@ from himena_bio._utils import topology
     title="Translate",
     keybindings=["Alt+T"],
     command_id="himena-bio:translate",
+    group="protein",
 )
 def translate(model: WidgetDataModel) -> Parametric:
     """Translate a DNA or RNA sequence to protein."""
@@ -32,9 +33,10 @@ def translate(model: WidgetDataModel) -> Parametric:
 @register_function(
     menus="tools/biology",
     types=[Type.DNA, Type.RNA],
-    title="Translate until stop codon",
+    title="Translate Until Stop Codon",
     keybindings=["Alt+Shift+T"],
     command_id="himena-bio:translate-until-stop",
+    group="protein",
 )
 def translate_until_stop(model: WidgetDataModel) -> Parametric:
     """Translate a DNA or RNA sequence from the selection until a stop codon is encountered."""

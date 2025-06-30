@@ -68,3 +68,14 @@ def test_gibson_single(ov_seq: str):
     vec = SeqRecord(seq=Seq(ov_seq + SEQ_EGFP + ov_seq))
     out = gibson_assembly_single(vec)
     assert is_circular_equal(out.seq, Seq(SEQ_EGFP + ov_seq))
+
+def test_sanger_sequencing():
+    from himena_bio._func import sequencing
+
+    rec = SeqRecord(seq=Seq(SEQ_EGFP))
+    out = sequencing(rec, SEQ_EGFP[15:25])
+    assert str(out.seq) == SEQ_EGFP[15:]
+
+    assert len(SEQ_EGFP) > 37
+    out = sequencing(rec, Seq(SEQ_EGFP[27:37]).reverse_complement())
+    assert str(out.seq) == str(Seq(SEQ_EGFP[:37]).reverse_complement())

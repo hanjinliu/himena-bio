@@ -19,6 +19,7 @@ def new_dna() -> WidgetDataModel:
     menus="tools/biology",
     title="Show Codon Table",
     command_id="himena-bio:show-codon-table",
+    group="others",
 )
 def show_codon_table() -> WidgetDataModel:
     """Display the standard codon table."""
@@ -35,6 +36,7 @@ def show_codon_table() -> WidgetDataModel:
     menus="tools/biology",
     title="Duplicate selection",
     command_id="himena-bio:duplicate-selection",
+    group="nucleotide",
 )
 def duplicate_selection(model: WidgetDataModel) -> Parametric:
     meta = cast_meta(model.metadata)
@@ -61,6 +63,7 @@ def duplicate_selection(model: WidgetDataModel) -> Parametric:
     menus="tools/biology",
     title="Duplicate this entry",
     command_id="himena-bio:duplicate-this-entry",
+    group="nucleotide",
 )
 def duplicate_this_entry(model: WidgetDataModel) -> Parametric:
     meta = cast_meta(model.metadata)
@@ -77,10 +80,12 @@ def duplicate_this_entry(model: WidgetDataModel) -> Parametric:
 
 @register_function(
     menus="tools/biology",
-    title="Reverse complement",
+    title="Reverse Complement",
     command_id="himena-bio:reverse-complement",
+    group="nucleotide",
 )
 def reverse_complement(model: WidgetDataModel) -> WidgetDataModel:
+    """Reverse complement the sequence."""
     out = [cast_seq_record(rec).reverse_complement() for rec in model.value]
     return WidgetDataModel(value=out, type=model.type, title=f"RC of {model.title}")
 
@@ -93,6 +98,7 @@ def reverse_complement(model: WidgetDataModel) -> WidgetDataModel:
     types=[Type.DNA],
     title="PCR",
     command_id="himena-bio:pcr",
+    group="nucleotide",
 )
 def in_silico_pcr(model: WidgetDataModel) -> Parametric:
     """Simulate PCR."""
@@ -114,6 +120,7 @@ def in_silico_pcr(model: WidgetDataModel) -> Parametric:
     menus="tools/biology",
     title="Gibson Assembly",
     command_id="himena-bio:gibson-assembly",
+    group="nucleotide",
 )
 def in_silico_gibson_assembly() -> Parametric:
     from himena_bio._func import gibson_assembly, gibson_assembly_single
@@ -133,3 +140,49 @@ def in_silico_gibson_assembly() -> Parametric:
         return WidgetDataModel(value=[out], type=vec.type)
 
     return run_gibson
+
+
+@register_function(
+    menus=[],
+    types=[Type.DNA],
+    title="Gibson Assembly Using This ...",
+    command_id="himena-bio:gibson-assembly-this",
+    group="nucleotide",
+)
+def in_silico_gibson_assembly_this(model: WidgetDataModel) -> Parametric:
+    from himena_bio._func import gibson_assembly, gibson_assembly_single
+
+    @configure_gui(insert={"types": [Type.DNA]})
+    def run_gibson(
+        insert: WidgetDataModel | None = None,
+    ) -> WidgetDataModel:
+        if insert is None:
+            out = gibson_assembly_single(model.value[0])
+        else:
+            out = gibson_assembly(model.value[0], insert.value[0])
+        return WidgetDataModel(value=[out], type=model.type)
+
+    return run_gibson
+
+
+@register_function(
+    menus="tools/biology",
+    types=[Type.DNA],
+    title="Sanger Sequencing",
+    command_id="himena-bio:sanger-sequencing",
+    group="nucleotide",
+)
+def in_silico_sequencing(model: WidgetDataModel) -> Parametric:
+    """Simulate Sanger sequencing."""
+    from himena_bio._func import sequencing
+
+    def run_sequencing(seq: str) -> WidgetDataModel:
+        out = []
+        for rec in model.value:
+            out.append(sequencing(rec, seq))
+
+        return WidgetDataModel(
+            value=out, type=model.type, title=f"Sequencing of {model.title}"
+        )
+
+    return run_sequencing
