@@ -43,3 +43,55 @@ def feature_to_slice(feature: SeqFeature, nth: int) -> tuple[int, int]:
 
 def topology(rec: SeqRecord) -> str:
     return rec.annotations.get("topology", "linear")
+
+
+def slice_seq_record(rec: SeqRecord, index: slice):
+    from Bio.SeqFeature import SimpleLocation
+
+    parent_length = len(rec)
+    answer = rec._from_validated(
+        rec.seq[index],
+        id=rec.id,
+        name=rec.name,
+        description=rec.description,
+    )
+    if "molecule_type" in rec.annotations:
+        # This will still apply, and we need it for GenBank/EMBL etc output
+        answer.annotations["molecule_type"] = rec.annotations["molecule_type"]
+
+    start, stop, step = index.indices(parent_length)
+    if step == 1:
+        # Select relevant features, add them with shifted locations
+        # assert str(self.seq)[index] == str(self.seq)[start:stop]
+        for feat in rec.features:
+            try:
+                if feat.location.start < start < feat.location.end:
+                    feat_clipped = type(feat)(
+                        location=SimpleLocation(0, feat.location.end - start),
+                        type=feat.type,
+                        id=feat.id,
+                        qualifiers=feat.qualifiers,
+                    )
+                    answer.features.append(feat_clipped)
+                elif feat.location.start < stop < feat.location.end:
+                    feat_clipped = type(feat)(
+                        location=SimpleLocation(
+                            max(feat.location.start - start, 0), stop - start
+                        ),
+                        type=feat.type,
+                        id=feat.id,
+                        qualifiers=feat.qualifiers,
+                    )
+                    answer.features.append(feat_clipped)
+                elif start <= feat.location.start and feat.location.end <= stop:
+                    answer.features.append(feat._shift(-start))
+            except TypeError:
+                # Will fail on UnknownPosition
+                pass
+
+    # Slice all the values to match the sliced sequence
+    # (this should also work with strides, even negative strides):
+    for key, value in rec.letter_annotations.items():
+        answer.letter_annotations[key] = value[index]
+
+    return answer

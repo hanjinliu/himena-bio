@@ -1,7 +1,7 @@
 from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import SimpleLocation
 from Bio.Seq import Seq
-from himena_bio._utils import topology
+from himena_bio._utils import topology, slice_seq_record
 
 
 def _find_all_match(vec: Seq, primer: Seq):
@@ -75,11 +75,13 @@ def _do_pcr(
     f_seq, f_loc = f_match
     r_seq, r_loc = r_match
     if f_loc.start < r_loc.start:
-        product_seq = rec[f_loc.start : r_loc.end]
+        product_seq = slice_seq_record(rec, slice(f_loc.start, r_loc.end))
     else:
         if topology(rec) == "linear":
             raise ValueError("No PCR product obtained.")
-        product_seq = rec[f_loc.start :] + rec[: r_loc.end]
+        product_seq = slice_seq_record(
+            rec, slice(f_loc.start, None)
+        ) + slice_seq_record(rec, slice(None, r_loc.end))
 
     # deal with flanking regions
     out = len(f_seq) - len(f_loc)
@@ -124,12 +126,12 @@ def pcr(self: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int 
     elif match_f[0].strand == match_r[0].strand:
         raise ValueError("Each primer binds to the template in the same direction.")
     elif match_f[0].strand == 1 and match_r[0].strand == -1:
-        ans = _do_pcr((forward, match_f[0]), (reverse, match_r[0]), self)
+        out = _do_pcr((forward, match_f[0]), (reverse, match_r[0]), self)
     else:
-        ans = _do_pcr((reverse, match_r[0]), (forward, match_f[0]), self)
+        out = _do_pcr((reverse, match_r[0]), (forward, match_f[0]), self)
 
-    ans.annotations["topology"] = "linear"
-    return ans
+    out.annotations["topology"] = "linear"
+    return out
 
 
 def in_fusion(vec: SeqRecord, insert: SeqRecord):
