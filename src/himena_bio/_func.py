@@ -134,13 +134,40 @@ def pcr(self: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int 
     return out
 
 
-def in_fusion(vec: SeqRecord, insert: SeqRecord):
-    """Simulated In-Fusion.
+def gibson_assembly_single(
+    seq: SeqRecord,
+    overlap_range: tuple[int, int] = (15, 25),
+) -> SeqRecord:
+    """Simulated self-Gibson Assembly.
 
     Parameters
     ----------
-    insert : str or DNA
-        The DNA fragment to insert.
+    seq : SeqRecord
+        The sequence to be assembled.
+
+    Returns
+    -------
+    SeqRecord
+        The product of self-Gibson Assembly.
+    """
+    if topology(seq) == "circular":
+        raise ValueError("The input sequence must be linear DNA.")
+    if len(seq) < overlap_range[0] * 2:
+        raise ValueError(f"`{seq.name}` is too short.")
+
+    overlap = _find_gibson_overlap(seq, seq, overlap_range)
+    return slice_seq_record(seq, slice(overlap, None))
+
+
+def gibson_assembly(vec: SeqRecord, insert: SeqRecord | None = None):
+    """Simulated Gibson Assembly.
+
+    Parameters
+    ----------
+    vec : SeqRecord
+        The vector to assemble into.
+    insert : SeqRecord, optional
+        The insert to be assembled into the vector.
 
     Returns
     -------
@@ -155,25 +182,29 @@ def in_fusion(vec: SeqRecord, insert: SeqRecord):
         raise ValueError("insert is too short.")
 
     pos0 = len(vec) // 2
-    frag_l, frag_r = vec[:pos0], vec[pos0:]
+    frag_l = slice_seq_record(vec, slice(None, pos0))
+    frag_r = slice_seq_record(vec, slice(pos0, None))
 
-    if frag_l[:15].seq != insert[-15:].seq:
-        raise ValueError(
-            "Mismatch! Check carefully:\n"
-            f"--{insert[-20:].seq}\n"
-            f"       {frag_l[:20].seq}--"
-        )
-    if frag_r[-15:].seq != insert[:15].seq:
-        raise ValueError(
-            "Mismatch! Check carefully:\n"
-            f"       {insert[:20].seq}--\n"
-            f"--{frag_r[-20:].seq}"
-        )
+    ov0 = _find_gibson_overlap(insert, frag_l)
+    ov1 = _find_gibson_overlap(frag_r, insert)
+    return (
+        slice_seq_record(frag_r, slice(None, len(frag_r) - ov1))
+        + insert
+        + slice_seq_record(frag_l, slice(ov0, None))
+    )
 
-    frag_r = frag_r[: len(frag_r) - 15]
-    frag_l = frag_l[15:]
-    out = frag_r + insert + frag_l
-    return out
+
+def _find_gibson_overlap(
+    left: SeqRecord,
+    right: SeqRecord,
+    overlap_range: tuple[int, int] = (15, 25),
+) -> int:
+    for overlap in range(overlap_range[0], overlap_range[1] + 1):
+        if right.seq[:overlap] == left.seq[-overlap:]:
+            break
+    else:
+        raise ValueError("No overlap found to perform Gibson Assembly.")
+    return overlap
 
 
 def is_circular_equal(seq1: Seq, seq2: Seq) -> bool:

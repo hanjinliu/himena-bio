@@ -112,20 +112,24 @@ def in_silico_pcr(model: WidgetDataModel) -> Parametric:
 
 @register_function(
     menus="tools/biology",
-    title="In-Fusion",
-    command_id="himena-bio:in-fusion",
+    title="Gibson Assembly",
+    command_id="himena-bio:gibson-assembly",
 )
-def in_silico_in_fusion() -> Parametric:
-    from himena_bio._func import in_fusion
+def in_silico_gibson_assembly() -> Parametric:
+    from himena_bio._func import gibson_assembly, gibson_assembly_single
 
     @configure_gui(
         vec={"types": [Type.DNA]},
         insert={"types": [Type.DNA]},
     )
-    def run_in_fusion(vec: WidgetDataModel, insert: WidgetDataModel) -> WidgetDataModel:
-        out = in_fusion(vec.value[0], insert.value[0])
-        return WidgetDataModel(
-            value=[out], type=vec.type, title=f"In-Fusion of {vec.title}"
-        )
+    def run_gibson(
+        vec: WidgetDataModel,
+        insert: WidgetDataModel | None = None,
+    ) -> WidgetDataModel:
+        if insert is None:
+            out = gibson_assembly_single(vec.value[0])
+        else:
+            out = gibson_assembly(vec.value[0], insert.value[0])
+        return WidgetDataModel(value=[out], type=vec.type)
 
-    return run_in_fusion
+    return run_gibson

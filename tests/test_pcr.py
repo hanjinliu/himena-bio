@@ -1,4 +1,4 @@
-from himena_bio._func import in_fusion, pcr, is_circular_equal
+from himena_bio._func import gibson_assembly, pcr, is_circular_equal, gibson_assembly_single
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import pytest
@@ -50,8 +50,21 @@ def test_pcr_circular(template: str, forward: str, reverse: str, expected: str):
 def test_circular_equal(seq1, seq2, expected):
     assert is_circular_equal(Seq(seq1), Seq(seq2)) == expected
 
-def test_in_fusion():
+@pytest.mark.parametrize("ov0, ov1", [(15, 15), (16, 18), (19, 17)])
+def test_gibson(ov0: int, ov1: int):
     vec = SeqRecord(seq=Seq(SEQ_EGFP))
-    insert = SeqRecord(seq=Seq(SEQ_EGFP[-15:] + "ATATATATAT" + SEQ_EGFP[:15]))
-    out = in_fusion(vec, insert)
+    insert = SeqRecord(seq=Seq(SEQ_EGFP[-ov0:] + "ATATATATAT" + SEQ_EGFP[:ov1]))
+    out = gibson_assembly(vec, insert)
     assert is_circular_equal(out.seq, Seq(SEQ_EGFP + "ATATATATAT"))
+
+@pytest.mark.parametrize(
+    "ov_seq",
+    [
+        "GTGAAGTTCCTCAGT",
+        "CGTGAAGTTCCTCAGTC",
+    ]
+)
+def test_gibson_single(ov_seq: str):
+    vec = SeqRecord(seq=Seq(ov_seq + SEQ_EGFP + ov_seq))
+    out = gibson_assembly_single(vec)
+    assert is_circular_equal(out.seq, Seq(SEQ_EGFP + ov_seq))
