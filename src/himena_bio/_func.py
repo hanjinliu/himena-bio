@@ -106,10 +106,11 @@ def pcr(self: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int 
     min_match : int, optional
         The minimum length of base match, by default 15
     """
-    forward = Seq(forward)
-    reverse = Seq(reverse)
-    match_f = find_match(self.seq, forward, min_match)
-    match_r = find_match(self.seq, reverse, min_match)
+    forward = Seq(forward).upper()
+    reverse = Seq(reverse).upper()
+    seq = self.seq.upper()
+    match_f = find_match(seq, forward, min_match)
+    match_r = find_match(seq, reverse, min_match)
 
     # print result
     if len(match_f) + len(match_r) == 0:
@@ -202,8 +203,10 @@ def _find_gibson_overlap(
     right: SeqRecord,
     overlap_range: tuple[int, int] = (15, 25),
 ) -> int:
+    left_seq = left.seq.upper()
+    right_seq = right.seq.upper()
     for overlap in range(overlap_range[0], overlap_range[1] + 1):
-        if right.seq[:overlap] == left.seq[-overlap:]:
+        if right_seq[:overlap] == left_seq[-overlap:]:
             break
     else:
         raise ValueError("No overlap found to perform Gibson Assembly.")
