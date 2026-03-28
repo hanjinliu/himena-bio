@@ -107,7 +107,6 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self._record = record
         self.setPlainText(str(record.seq))
         self.update_highlight()
-        return None
 
     def update_highlight(self):
         if self._pend_update_highlight:
@@ -128,7 +127,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
             else:
                 parts = []
             for start, end in parts:
-                cursor.setPosition(start)
+                cursor.setPosition(max(start, 0))
                 cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
                 if colors := feature.qualifiers.get(ApeAnnotation.FWCOLOR):
                     color = parse_ape_color(colors[0])
@@ -302,6 +301,8 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self.parentWidget()._finder_widget.show()
 
     def _backspace_event(self):
+        if self.document().isEmpty():
+            return
         cursor = self.textCursor()
         if not cursor.hasSelection():
             cursor.movePosition(
@@ -639,7 +640,7 @@ class QMultiSeqEdit(QtW.QWidget):
         else:
             return
         cursor = self._seq_edit.textCursor()
-        cursor.setPosition(start)
+        cursor.setPosition(max(start, 0))
         self._seq_edit.ensureCursorVisible()
         cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
         self._seq_edit.setTextCursor(cursor)

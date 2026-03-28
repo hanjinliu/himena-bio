@@ -39,6 +39,7 @@ def show_codon_table() -> WidgetDataModel:
     group="nucleotide",
 )
 def duplicate_selection(model: WidgetDataModel) -> Parametric:
+    """Duplicate the selected region of the sequence."""
     meta = cast_meta(model.metadata)
 
     @configure_gui(
@@ -66,6 +67,7 @@ def duplicate_selection(model: WidgetDataModel) -> Parametric:
     group="nucleotide",
 )
 def duplicate_this_entry(model: WidgetDataModel) -> Parametric:
+    """Duplicate the current entry."""
     meta = cast_meta(model.metadata)
 
     @configure_gui(
