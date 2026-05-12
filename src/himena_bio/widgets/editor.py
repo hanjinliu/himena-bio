@@ -143,6 +143,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self.edited.emit()
 
     def to_record(self) -> SeqRecord:
+        annotations = self._record.annotations.copy()
         return SeqRecord(
             seq=Seq(self.toPlainText()),
             id=self._record.id,
@@ -150,7 +151,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
             description=self._record.description,
             dbxrefs=self._record.dbxrefs,
             features=self._record.features,
-            annotations=self._record.annotations,
+            annotations=annotations,
             letter_annotations=self._record.letter_annotations,
         )
 
@@ -520,8 +521,10 @@ class QMultiSeqEdit(QtW.QWidget):
     @validate_protocol
     def to_model(self) -> WidgetDataModel:
         cursor = self._seq_edit.textCursor()
+        record = self._seq_edit.to_record()
+        record.annotations["topology"] = self._control._topology.value
         return WidgetDataModel(
-            value=[self._seq_edit.to_record()],
+            value=[record],
             type=self._model_type,
             metadata=SeqMeta(
                 current_index=self._seq_choices.currentIndex(),
