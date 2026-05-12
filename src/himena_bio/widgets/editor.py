@@ -122,8 +122,8 @@ class QSeqEdit(QtW.QPlainTextEdit):
         for feature in self._record.features:
             if isinstance(loc := feature.location, SimpleLocation):
                 parts = [(int(loc.start), int(loc.end))]
-            elif isinstance(loc := feature.location, CompoundLocation):
-                parts = [(int(sub.start), int(sub.end)) for sub in loc]
+            elif isinstance(loc, CompoundLocation):
+                parts = [(int(sub.start), int(sub.end)) for sub in loc.parts]
             else:
                 parts = []
             for start, end in parts:
@@ -636,7 +636,7 @@ class QMultiSeqEdit(QtW.QWidget):
         if isinstance(loc := feature.location, SimpleLocation):
             start, end = int(loc.start), int(loc.end)
         elif isinstance(loc := feature.location, CompoundLocation):
-            start, end = int(loc[nth].start), int(loc[nth].end)
+            start, end = int(loc.parts[nth].start), int(loc.parts[nth].end)
         else:
             return
         cursor = self._seq_edit.textCursor()
@@ -666,7 +666,7 @@ def _shift_feature(feature: SeqFeature, start: int, shift: int) -> SeqFeature | 
             return copy_feature(feature, loc_new)
     elif isinstance(loc := feature.location, CompoundLocation):
         new_parts: list[SimpleLocation] = []
-        for part in loc:
+        for part in loc.parts:
             part_new: SimpleLocation = part
             if part.end > start:
                 start_new, end_new = part.start, part.end
