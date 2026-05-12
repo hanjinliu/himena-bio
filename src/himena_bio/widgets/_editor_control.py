@@ -53,7 +53,7 @@ class QSeqControl(QtW.QWidget):
             choices=["linear", "circular"],
             tooltip="Topology of the sequence.",
         )
-        self._topology.min_width = self._topology.max_width = 72
+        self._topology.min_width = self._topology.max_width = 102
         layout.addWidget(self._topology.native)
 
 
