@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from qtpy import QtWidgets as QtW
 from qtpy.QtCore import Qt
 from superqt import QElidingLabel, QToggleSwitch
+from himena.qt.magicgui import ToggleButtons
 
 if TYPE_CHECKING:
     from himena_bio.widgets.editor import QMultiSeqEdit
@@ -48,11 +49,12 @@ class QSeqControl(QtW.QWidget):
         )
         layout.addWidget(self._percent_gc)
 
-        self._topology = QtW.QComboBox()
-        self._topology.setToolTip("Topology of the sequence.")
-        self._topology.addItems(["linear", "circular"])
-        self._topology.setFixedWidth(72)
-        layout.addWidget(self._topology)
+        self._topology = ToggleButtons(
+            choices=["linear", "circular"],
+            tooltip="Topology of the sequence.",
+        )
+        self._topology.min_width = self._topology.max_width = 102
+        layout.addWidget(self._topology.native)
 
 
 class QVParam(QtW.QWidget):

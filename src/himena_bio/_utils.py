@@ -35,7 +35,8 @@ def feature_to_slice(feature: SeqFeature, nth: int) -> tuple[int, int]:
     if isinstance(loc := feature.location, SimpleLocation):
         start, end = int(loc.start), int(loc.end)
     elif isinstance(loc := feature.location, CompoundLocation):
-        start, end = int(loc[nth].start), int(loc[nth].end)
+        part = loc.parts[nth]
+        start, end = int(part.start), int(part.end)
     else:
         raise NotImplementedError(f"Unknown location type: {type(loc)}")
     return start, end
