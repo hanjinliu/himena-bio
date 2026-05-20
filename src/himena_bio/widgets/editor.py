@@ -564,6 +564,7 @@ class QMultiSeqEdit(QtW.QWidget):
         self._seq_edit.setTextCursor(cursor)
         comment = record.annotations.get(ApeAnnotation.COMMENT, "")
         self._comment.setPlainText(_remove_ape_meta(comment))
+        self._control._topology.set_value(record.annotations.get("topology", "linear"))
 
     def _selection_changed(self):
         cursor = self._seq_edit.textCursor()
