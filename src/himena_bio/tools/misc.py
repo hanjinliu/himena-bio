@@ -1,4 +1,5 @@
 from himena import MainWindow, Parametric, WidgetDataModel, StandardType
+from himena.widgets import SubWindow
 from himena.consts import MenuId
 from himena.plugins import register_function, configure_gui
 from himena_bio.consts import Type
@@ -102,12 +103,15 @@ def reverse_complement(model: WidgetDataModel) -> WidgetDataModel:
     command_id="himena-bio:pcr",
     group="nucleotide",
 )
-def in_silico_pcr(model: WidgetDataModel) -> Parametric:
+def in_silico_pcr(win: SubWindow) -> Parametric:
     """Simulate PCR."""
     from himena_bio._func import pcr
 
     def run_pcr(forward: str, reverse: str) -> WidgetDataModel:
         out = []
+        # NOTE: output model may change if user ran PCR, and found that the template is
+        # not circular, and ran again.
+        model = win.to_model()
         for rec in model.value:
             out.append(pcr(rec, forward, reverse))
 
@@ -164,12 +168,13 @@ def in_silico_gibson_assembly_this(model: WidgetDataModel, ui: MainWindow):
     command_id="himena-bio:sanger-sequencing",
     group="nucleotide",
 )
-def in_silico_sequencing(model: WidgetDataModel) -> Parametric:
+def in_silico_sequencing(win: SubWindow) -> Parametric:
     """Simulate Sanger sequencing."""
     from himena_bio._func import sequencing
 
     def run_sequencing(seq: str) -> WidgetDataModel:
         out = []
+        model = win.to_model()
         for rec in model.value:
             out.append(sequencing(rec, seq))
 

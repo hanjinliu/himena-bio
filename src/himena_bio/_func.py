@@ -78,7 +78,9 @@ def _do_pcr(
         product_seq = slice_seq_record(rec, slice(f_loc.start, r_loc.end))
     else:
         if topology(rec) == "linear":
-            raise ValueError("No PCR product obtained.")
+            raise ValueError(
+                "No PCR product obtained. Maybe the template should be circular?"
+            )
         product_seq = slice_seq_record(
             rec, slice(f_loc.start, None)
         ) + slice_seq_record(rec, slice(None, r_loc.end))
@@ -94,7 +96,7 @@ def _do_pcr(
     return product_seq
 
 
-def pcr(self: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int = 15):
+def pcr(rec: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int = 15):
     """Conduct PCR using 'self' as the template DNA.
 
     Parameters
@@ -108,7 +110,7 @@ def pcr(self: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int 
     """
     forward = Seq(forward).upper()
     reverse = Seq(reverse).upper()
-    seq = self.seq.upper()
+    seq = rec.seq.upper()
     match_f = find_match(seq, forward, min_match)
     match_r = find_match(seq, reverse, min_match)
 
@@ -127,9 +129,9 @@ def pcr(self: SeqRecord, forward: str | Seq, reverse: str | Seq, min_match: int 
     elif match_f[0].strand == match_r[0].strand:
         raise ValueError("Each primer binds to the template in the same direction.")
     elif match_f[0].strand == 1 and match_r[0].strand == -1:
-        out = _do_pcr((forward, match_f[0]), (reverse, match_r[0]), self)
+        out = _do_pcr((forward, match_f[0]), (reverse, match_r[0]), rec)
     else:
-        out = _do_pcr((reverse, match_r[0]), (forward, match_f[0]), self)
+        out = _do_pcr((reverse, match_r[0]), (forward, match_f[0]), rec)
 
     out.annotations["topology"] = "linear"
     return out
