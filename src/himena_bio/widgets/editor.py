@@ -13,7 +13,7 @@ from Bio.SeqUtils import MeltingTemp
 from magicgui.widgets import Dialog
 from cmap import Color
 from himena import WidgetDataModel
-from himena.widgets import set_status_tip
+from himena.widgets import set_status_tip, current_instance
 from himena.types import is_subtype
 from himena.qt.magicgui import get_type_map
 from himena.consts import MonospaceFontFamily
@@ -101,6 +101,11 @@ class QSeqEdit(QtW.QPlainTextEdit):
             "Move Feature Back",
             "Alt+B",
             lambda: self._move_feature_back(self._get_front_feature()),
+        )
+        add_action(
+            "Find Feature",
+            "Ctrl+Shift+F",
+            self._find_feature,
         )
 
     def set_record(self, record: SeqRecord):
@@ -421,6 +426,31 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self.update_highlight()
         self._undo_redo_stack.push(action)
 
+    def _find_feature(self):
+        choices: list[tuple[str, SeqFeature]] = []
+        for feat in self._record.features:
+            txt = f"{get_feature_label(feat)} (type: {feat.type}, location: {feat.location})"
+            choices.append((txt, feat))
+        if feat := current_instance().exec_choose_one_dialog(
+            message="Choose a feature",
+            choices=choices,
+            how="palette",
+        ):
+            self._select_feature(feat, 0)
+
+    def _select_feature(self, feature: SeqFeature, nth: int):
+        if isinstance(loc := feature.location, SimpleLocation):
+            start, end = int(loc.start), int(loc.end)
+        elif isinstance(loc := feature.location, CompoundLocation):
+            start, end = int(loc.parts[nth].start), int(loc.parts[nth].end)
+        else:
+            return
+        cursor = self.textCursor()
+        cursor.setPosition(max(start, 0))
+        self.ensureCursorVisible()
+        cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
+
     def _feature_qualifiers_from_dialog(
         self,
         name: str = "Unnamed",
@@ -640,17 +670,7 @@ class QMultiSeqEdit(QtW.QWidget):
             self._seq_edit.ensureCursorVisible()
             self._seq_edit.setTextCursor(cursor)
             return
-        if isinstance(loc := feature.location, SimpleLocation):
-            start, end = int(loc.start), int(loc.end)
-        elif isinstance(loc := feature.location, CompoundLocation):
-            start, end = int(loc.parts[nth].start), int(loc.parts[nth].end)
-        else:
-            return
-        cursor = self._seq_edit.textCursor()
-        cursor.setPosition(max(start, 0))
-        self._seq_edit.ensureCursorVisible()
-        cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
-        self._seq_edit.setTextCursor(cursor)
+        self._seq_edit._select_feature(feature, nth)
 
     def _on_view_hovered(self, feature: SeqFeature | None, nth: int):
         if isinstance(feature, SeqFeature):
