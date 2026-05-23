@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
 from qtpy.QtCore import Qt
@@ -341,6 +341,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
 
     def _show_context_menu(self, pos: QtCore.QPoint):
         cursor_pos = self.cursorForPosition(pos).position()
+
         cursor = self.textCursor()
         start, end = cursor.selectionStart(), cursor.selectionEnd()
         if not start <= cursor_pos < end:
@@ -355,10 +356,10 @@ class QSeqEdit(QtW.QPlainTextEdit):
     def _new_feature(self):
         cursor = self.textCursor()
         start, end = cursor.selectionStart(), cursor.selectionEnd()
-        feature = SeqFeature(
-            location=SimpleLocation(start, end),
-            **self._feature_qualifiers_from_dialog(),
-        )
+        kwargs = self._feature_qualifiers_from_dialog()
+        if kwargs is None:
+            return
+        feature = SeqFeature(location=SimpleLocation(start, end), **kwargs)
         index = len(self._record.features)
         self._record.features.append(feature)
         self._undo_redo_stack.push(
@@ -373,10 +374,12 @@ class QSeqEdit(QtW.QPlainTextEdit):
 
     def _edit_feature(self, feature: SeqFeature):
         kwargs = self._feature_qualifiers_from_dialog(
-            name=feature.type,
+            name=get_feature_label(feature),
             fcolor=feature.qualifiers.get(ApeAnnotation.FWCOLOR, ["cyan"])[0],
             rcolor=feature.qualifiers.get(ApeAnnotation.RVCOLOR, ["cyan"])[0],
         )
+        if kwargs is None:
+            return
         index = self._record.features.index(feature)
         feature_new = copy_feature(feature)
         feature_new.type = feature_new.id = kwargs["type"]
@@ -423,21 +426,21 @@ class QSeqEdit(QtW.QPlainTextEdit):
         name: str = "Unnamed",
         fcolor: str = "cyan",
         rcolor: str = "cyan",
-    ) -> dict:
+    ) -> dict[str, Any] | None:
         typemap = get_type_map()
         w_name = typemap.create_widget(value=name, label="Name")
         w_fcolor = typemap.create_widget(value=Color(fcolor), label="Forward Color")
         w_rcolor = typemap.create_widget(value=Color(rcolor), label="Reverse Color")
         dlg = Dialog(widgets=[w_name, w_fcolor, w_rcolor])
-        dlg.exec()
-        return {
-            "type": w_name.value,
-            "qualifiers": {
-                ApeAnnotation.LABEL: [w_name.value],
-                ApeAnnotation.FWCOLOR: [Color(w_fcolor.value).hex],
-                ApeAnnotation.RVCOLOR: [Color(w_rcolor.value).hex],
-            },
-        }
+        if dlg.exec():
+            return {
+                "type": w_name.value,
+                "qualifiers": {
+                    ApeAnnotation.LABEL: [w_name.value],
+                    ApeAnnotation.FWCOLOR: [Color(w_fcolor.value).hex],
+                    ApeAnnotation.RVCOLOR: [Color(w_rcolor.value).hex],
+                },
+            }
 
     def set_keys_allowed(self, keys: Iterable[str]):
         _keys = frozenset(char_to_qt_key(char) for char in keys)

@@ -183,3 +183,38 @@ def in_silico_sequencing(win: SubWindow) -> Parametric:
         )
 
     return run_sequencing
+
+
+@register_function(
+    menus="tools/biology",
+    types=[Type.PROTEIN],
+    title="Protein Properties",
+    command_id="himena-bio:protein-properties",
+    group="protein",
+)
+def protein_properties(model: WidgetDataModel) -> WidgetDataModel:
+    """Calculate properties of a protein sequence."""
+    from Bio.SeqUtils.ProtParam import ProteinAnalysis
+
+    out = []
+    for rec in model.value:
+        rec = cast_seq_record(rec)
+        analysis = ProteinAnalysis(str(rec.seq))
+        eps_reduced, eps_cyscys = analysis.molar_extinction_coefficient()
+        properties = [
+            f"Molecular Weight: {analysis.molecular_weight():.2f}",
+            f"Extinction Coefficient (reduced): {eps_reduced}",
+            f"Extinction Coefficient (with S-S): {eps_cyscys}",
+            f"Isoelectric Point (pI): {analysis.isoelectric_point():.3f}",
+            f"Aromaticity: {analysis.aromaticity():.3g}",
+            f"Instability Index: {analysis.instability_index():.3g}",
+            f"Gravy: {analysis.gravy():.3g}",
+        ]
+        out.append(f"{rec.name}:\n" + "\n".join(properties))
+
+    return WidgetDataModel(
+        value="\n\n".join(out),
+        type=StandardType.TEXT,
+        title=f"ProtParam of {model.title}",
+        editable=False,
+    )

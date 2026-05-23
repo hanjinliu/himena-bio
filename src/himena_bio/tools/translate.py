@@ -25,7 +25,15 @@ def translate(model: WidgetDataModel) -> Parametric:
         record = cast_seq_record(model.value[index])
         start, end = selection
         translations = record.seq[start:end].translate()
-        return WidgetDataModel(value=[str(translations)], type=Type.PROTEIN)
+        if len(model.value) == 1:
+            title = f"Translated {model.title} ({start}:{end})"
+        else:
+            title = f"Translated {model.title} ({record.id}, {start}:{end})"
+        return WidgetDataModel(
+            value=[str(translations)],
+            type=Type.PROTEIN,
+            title=title,
+        )
 
     return run_translate
 
@@ -55,10 +63,15 @@ def translate_until_stop(model: WidgetDataModel) -> Parametric:
             seq_ref = record.seq[start:] + record.seq[:start]
         else:
             raise ValueError(f"Invalid topology: {_topo!r}")
-        translations = seq_ref.translate(to_stop=True)
+        seq_trans = seq_ref.translate(to_stop=True)
+        if len(model.value) == 1:
+            title = f"Translated {model.title} ({start}:stop)"
+        else:
+            title = f"Translated {model.title} ({record.id}, {start}:stop)"
         return WidgetDataModel(
-            value=[str(translations)],
+            value=[str(seq_trans)],
             type=Type.PROTEIN,
+            title=title,
         )
 
     return run_translate
