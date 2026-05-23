@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
 from qtpy.QtCore import Qt
@@ -13,7 +13,7 @@ from Bio.SeqUtils import MeltingTemp
 from magicgui.widgets import Dialog
 from cmap import Color
 from himena import WidgetDataModel
-from himena.widgets import set_status_tip
+from himena.widgets import set_status_tip, current_instance
 from himena.types import is_subtype
 from himena.qt.magicgui import get_type_map
 from himena.consts import MonospaceFontFamily
@@ -101,6 +101,11 @@ class QSeqEdit(QtW.QPlainTextEdit):
             "Move Feature Back",
             "Alt+B",
             lambda: self._move_feature_back(self._get_front_feature()),
+        )
+        add_action(
+            "Find Feature",
+            "Ctrl+Shift+F",
+            self._find_feature,
         )
 
     def set_record(self, record: SeqRecord):
@@ -341,6 +346,7 @@ class QSeqEdit(QtW.QPlainTextEdit):
 
     def _show_context_menu(self, pos: QtCore.QPoint):
         cursor_pos = self.cursorForPosition(pos).position()
+
         cursor = self.textCursor()
         start, end = cursor.selectionStart(), cursor.selectionEnd()
         if not start <= cursor_pos < end:
@@ -355,10 +361,10 @@ class QSeqEdit(QtW.QPlainTextEdit):
     def _new_feature(self):
         cursor = self.textCursor()
         start, end = cursor.selectionStart(), cursor.selectionEnd()
-        feature = SeqFeature(
-            location=SimpleLocation(start, end),
-            **self._feature_qualifiers_from_dialog(),
-        )
+        kwargs = self._feature_qualifiers_from_dialog()
+        if kwargs is None:
+            return
+        feature = SeqFeature(location=SimpleLocation(start, end), **kwargs)
         index = len(self._record.features)
         self._record.features.append(feature)
         self._undo_redo_stack.push(
@@ -373,10 +379,12 @@ class QSeqEdit(QtW.QPlainTextEdit):
 
     def _edit_feature(self, feature: SeqFeature):
         kwargs = self._feature_qualifiers_from_dialog(
-            name=feature.type,
+            name=get_feature_label(feature),
             fcolor=feature.qualifiers.get(ApeAnnotation.FWCOLOR, ["cyan"])[0],
             rcolor=feature.qualifiers.get(ApeAnnotation.RVCOLOR, ["cyan"])[0],
         )
+        if kwargs is None:
+            return
         index = self._record.features.index(feature)
         feature_new = copy_feature(feature)
         feature_new.type = feature_new.id = kwargs["type"]
@@ -418,26 +426,51 @@ class QSeqEdit(QtW.QPlainTextEdit):
         self.update_highlight()
         self._undo_redo_stack.push(action)
 
+    def _find_feature(self):
+        choices: list[tuple[str, SeqFeature]] = []
+        for feat in self._record.features:
+            txt = f"{get_feature_label(feat)} (type: {feat.type}, location: {feat.location})"
+            choices.append((txt, feat))
+        if feat := current_instance().exec_choose_one_dialog(
+            message="Choose a feature",
+            choices=choices,
+            how="palette",
+        ):
+            self._select_feature(feat, 0)
+
+    def _select_feature(self, feature: SeqFeature, nth: int):
+        if isinstance(loc := feature.location, SimpleLocation):
+            start, end = int(loc.start), int(loc.end)
+        elif isinstance(loc := feature.location, CompoundLocation):
+            start, end = int(loc.parts[nth].start), int(loc.parts[nth].end)
+        else:
+            return
+        cursor = self.textCursor()
+        cursor.setPosition(max(start, 0))
+        self.ensureCursorVisible()
+        cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
+
     def _feature_qualifiers_from_dialog(
         self,
         name: str = "Unnamed",
         fcolor: str = "cyan",
         rcolor: str = "cyan",
-    ) -> dict:
+    ) -> dict[str, Any] | None:
         typemap = get_type_map()
         w_name = typemap.create_widget(value=name, label="Name")
         w_fcolor = typemap.create_widget(value=Color(fcolor), label="Forward Color")
         w_rcolor = typemap.create_widget(value=Color(rcolor), label="Reverse Color")
         dlg = Dialog(widgets=[w_name, w_fcolor, w_rcolor])
-        dlg.exec()
-        return {
-            "type": w_name.value,
-            "qualifiers": {
-                ApeAnnotation.LABEL: [w_name.value],
-                ApeAnnotation.FWCOLOR: [Color(w_fcolor.value).hex],
-                ApeAnnotation.RVCOLOR: [Color(w_rcolor.value).hex],
-            },
-        }
+        if dlg.exec():
+            return {
+                "type": w_name.value,
+                "qualifiers": {
+                    ApeAnnotation.LABEL: [w_name.value],
+                    ApeAnnotation.FWCOLOR: [Color(w_fcolor.value).hex],
+                    ApeAnnotation.RVCOLOR: [Color(w_rcolor.value).hex],
+                },
+            }
 
     def set_keys_allowed(self, keys: Iterable[str]):
         _keys = frozenset(char_to_qt_key(char) for char in keys)
@@ -637,17 +670,7 @@ class QMultiSeqEdit(QtW.QWidget):
             self._seq_edit.ensureCursorVisible()
             self._seq_edit.setTextCursor(cursor)
             return
-        if isinstance(loc := feature.location, SimpleLocation):
-            start, end = int(loc.start), int(loc.end)
-        elif isinstance(loc := feature.location, CompoundLocation):
-            start, end = int(loc.parts[nth].start), int(loc.parts[nth].end)
-        else:
-            return
-        cursor = self._seq_edit.textCursor()
-        cursor.setPosition(max(start, 0))
-        self._seq_edit.ensureCursorVisible()
-        cursor.setPosition(end, QtGui.QTextCursor.MoveMode.KeepAnchor)
-        self._seq_edit.setTextCursor(cursor)
+        self._seq_edit._select_feature(feature, nth)
 
     def _on_view_hovered(self, feature: SeqFeature | None, nth: int):
         if isinstance(feature, SeqFeature):
