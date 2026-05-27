@@ -160,9 +160,11 @@ def gibson_assembly_single(
 
     overlap = _find_gibson_overlap(seq, seq, overlap_range)
     num = len(seq) // 2
-    return slice_seq_record(seq, slice(num, None)) + slice_seq_record(
-        seq, slice(overlap, num)
-    )
+    rec_l = slice_seq_record(seq, slice(num, None))
+    rec_r = slice_seq_record(seq, slice(overlap, num))
+    out = rec_r + rec_l
+    out.annotations["topology"] = "circular"
+    return out
 
 
 def gibson_assembly(vec: SeqRecord, insert: SeqRecord | None = None):
@@ -193,11 +195,11 @@ def gibson_assembly(vec: SeqRecord, insert: SeqRecord | None = None):
 
     ov0 = _find_gibson_overlap(insert, frag_l)
     ov1 = _find_gibson_overlap(frag_r, insert)
-    return (
-        slice_seq_record(frag_r, slice(None, len(frag_r) - ov1))
-        + insert
-        + slice_seq_record(frag_l, slice(ov0, None))
-    )
+    rec_r = slice_seq_record(frag_r, slice(None, len(frag_r) - ov1))
+    rec_l = slice_seq_record(frag_l, slice(ov0, None))
+    out = rec_r + insert + rec_l
+    out.annotations["topology"] = "circular"
+    return out
 
 
 def _find_gibson_overlap(
