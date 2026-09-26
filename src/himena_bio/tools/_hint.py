@@ -13,6 +13,11 @@ def _get_last_id(step: CommandExecution):
     )
 )
 (
+    when_command_executed(Type.DNA, "himena-bio:pcr").add_command_suggestion(
+        "himena-bio:self-ligation"
+    )
+)
+(
     when_command_executed(
         Type.DNA, "himena-bio:sanger-sequencing"
     ).add_command_suggestion("himena-bio:local-pairwise")

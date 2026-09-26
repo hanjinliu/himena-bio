@@ -80,3 +80,78 @@ def test_sanger_sequencing():
     assert len(SEQ_EGFP) > 37
     out = sequencing(rec, Seq(SEQ_EGFP[27:37]).reverse_complement())
     assert str(out.seq) == str(Seq(SEQ_EGFP[:37]).reverse_complement())
+
+def _circular(seq: str) -> SeqRecord:
+    rec = SeqRecord(id="test", seq=Seq(seq))
+    rec.annotations["topology"] = "circular"
+    return rec
+
+def test_inverse_pcr_features():
+    from Bio.SeqFeature import SeqFeature, SimpleLocation, CompoundLocation
+
+    rec = _circular(SEQ_EGFP)
+    # feature across the origin
+    rec.features.append(
+        SeqFeature(
+            CompoundLocation([SimpleLocation(40, 46, 1), SimpleLocation(0, 5, 1)]),
+            type="wrap",
+        )
+    )
+    # feature in the deleted region
+    rec.features.append(SeqFeature(SimpleLocation(20, 25, -1), type="deleted"))
+    # feature at the edge of the product
+    rec.features.append(SeqFeature(SimpleLocation(10, 20, -1), type="edge"))
+    out = pcr(rec, "GGTGGTGCCCA", "TCCTCGCCCTTG", min_match=8)
+    assert str(out.seq) == "GGTGGTGCCCATCCTGGGTGAGCAAGGGCGAGGA"
+    feats = {f.type: f for f in out.features}
+    assert set(feats) == {"wrap", "edge"}
+    assert (feats["wrap"].location.start, feats["wrap"].location.end) == (11, 22)
+    assert feats["wrap"].location.strand == 1
+    assert (feats["edge"].location.start, feats["edge"].location.end) == (27, 34)
+    assert feats["edge"].location.strand == -1
+
+@pytest.mark.parametrize("shift", [0, 5, 20, 40, 45])
+def test_pcr_primer_across_origin(shift: int):
+    template = SEQ_EGFP[shift:] + SEQ_EGFP[:shift]
+    out = pcr(_circular(template), "GTGAGCAAG", "CCAGGATGGGCAC", min_match=8)
+    assert str(out.seq) == SEQ_EGFP
+
+def test_self_ligation():
+    from himena_bio._func import self_ligation
+    from Bio.SeqFeature import SeqFeature, SimpleLocation
+
+    rec = SeqRecord(seq=Seq(SEQ_EGFP))
+    rec.annotations["topology"] = "linear"
+    n = len(SEQ_EGFP)
+    rec.features = [
+        SeqFeature(SimpleLocation(n - 5, n, 1), type="f", qualifiers={"label": ["a"]}),
+        SeqFeature(SimpleLocation(0, 3, 1), type="f", qualifiers={"label": ["a"]}),
+        SeqFeature(SimpleLocation(0, 3, 1), type="f", qualifiers={"label": ["b"]}),
+    ]
+    out = self_ligation(rec)
+    assert out.annotations["topology"] == "circular"
+    assert str(out.seq) == SEQ_EGFP
+    assert len(out.features) == 2
+    joined = out.features[0].location
+    assert [(p.start, p.end) for p in joined.parts] == [(n - 5, n), (0, 3)]
+    with pytest.raises(ValueError):
+        self_ligation(out)
+
+def test_inverse_pcr_then_self_ligation():
+    from himena_bio._func import self_ligation
+
+    rec = _circular(SEQ_EGFP)
+    product = pcr(rec, "GGTGGTGCCCA", "TCCTCGCCCTTG", min_match=8)
+    out = self_ligation(product)
+    # region between the primers are deleted
+    assert is_circular_equal(out.seq, Seq(SEQ_EGFP[:17] + SEQ_EGFP[29:]))
+
+def test_sequencing_circular_lowercase():
+    from himena_bio._func import sequencing
+
+    rec = _circular(SEQ_EGFP.lower())
+    out = sequencing(rec, SEQ_EGFP[30:40], length=20)
+    assert str(out.seq).upper() == (SEQ_EGFP[30:] + SEQ_EGFP)[:20]
+    out = sequencing(rec, Seq(SEQ_EGFP[5:15]).reverse_complement(), length=20)
+    expected = Seq(SEQ_EGFP + SEQ_EGFP[:15]).reverse_complement()[:20]
+    assert str(out.seq).upper() == str(expected)
