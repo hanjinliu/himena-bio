@@ -24,6 +24,9 @@ def translate(model: WidgetDataModel) -> Parametric:
     def run_translate(index: int, selection: tuple[int, int]) -> WidgetDataModel:
         record = cast_seq_record(model.value[index])
         start, end = selection
+        if start == end:  # no selection
+            start, end = 0, len(record)
+        end = start + (end - start) // 3 * 3  # ignore the incomplete codon
         translations = record.seq[start:end].translate()
         if len(model.value) == 1:
             title = f"Translated {model.title} ({start}:{end})"
@@ -63,6 +66,7 @@ def translate_until_stop(model: WidgetDataModel) -> Parametric:
             seq_ref = record.seq[start:] + record.seq[:start]
         else:
             raise ValueError(f"Invalid topology: {_topo!r}")
+        seq_ref = seq_ref[: len(seq_ref) // 3 * 3]  # ignore the incomplete codon
         seq_trans = seq_ref.translate(to_stop=True)
         if len(model.value) == 1:
             title = f"Translated {model.title} ({start}:stop)"

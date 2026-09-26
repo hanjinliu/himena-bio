@@ -20,19 +20,21 @@ class EditorAction:
 
 @dataclass
 class EditFeatureAction(EditorAction):
-    """Edit a feature, including adding/deleting one."""
+    """Edit a feature, including adding (old=None) or deleting (new=None) one."""
 
     index: int
     old: SeqFeature | None
     new: SeqFeature | None
 
     def apply(self, widget: QSeqEdit):
-        if self.new is None:
-            widget._record.features.pop(self.index)
-        elif len(widget._record.features) <= self.index:
-            widget._record.features.append(self.new)
+        features = widget._record.features
+        if self.old is None:
+            if self.new is not None:
+                features.insert(self.index, self.new)
+        elif self.new is None:
+            features.pop(self.index)
         else:
-            widget._record.features[self.index] = self.new
+            features[self.index] = self.new
 
     def invert(self) -> Self:
         return EditFeatureAction(index=self.index, old=self.new, new=self.old)
@@ -40,15 +42,14 @@ class EditFeatureAction(EditorAction):
 
 @dataclass
 class MoveFeatureAction(EditorAction):
+    """Move a feature from index `old` to index `new` (index after the move)."""
+
     old: int
     new: int
 
     def apply(self, widget: QSeqEdit):
-        if self.old < self.new:
-            new = self.new - 1
-        else:
-            new = self.new
-        widget._record.features.insert(new, widget._record.features.pop(self.old))
+        features = widget._record.features
+        features.insert(self.new, features.pop(self.old))
 
     def invert(self) -> Self:
         return MoveFeatureAction(old=self.new, new=self.old)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from qtpy import QtWidgets as QtW
 from qtpy.QtCore import Qt
-from himena_bio.consts import Type
+from himena_bio.consts import Keys, Type
 
 
 class QBaseGraphicsScene(QtW.QGraphicsScene):
@@ -48,11 +48,16 @@ def char_to_qt_key(char: str) -> Qt.Key:
 
 
 def infer_seq_type(seq: str) -> str:
-    if set(seq) <= set("ATGCN"):
+    chars = set(seq.upper()) - {"-"}  # ignore gaps
+    if chars <= Keys.DNA:
         return Type.DNA
-    elif set(seq) <= set("AUGCNYRWSKMBDHV"):
+    elif chars <= Keys.RNA:
         return Type.RNA
-    elif set(seq) <= set("ACDEFGHIKLMNPQRSTVWY"):
+    elif chars <= Keys.DNA_AMBIGUOUS:
+        return Type.DNA
+    elif chars <= Keys.RNA_AMBIGUOUS:
+        return Type.RNA
+    elif chars <= Keys.PROTEIN:
         return Type.PROTEIN
     else:
-        raise ValueError("Unsupported sequence type.")
+        raise ValueError(f"Unsupported sequence type: {seq[:20]!r}")

@@ -1,28 +1,20 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from logging import getLogger
 from qtpy import QtWidgets as QtW
 from qtpy import QtCore, QtGui
 from qtpy.QtCore import Qt
 from Bio.Seq import Seq
 from Bio.SeqIO import SeqRecord
-from Bio.SeqFeature import SeqFeature, SimpleLocation, CompoundLocation
+from Bio.SeqFeature import SeqFeature, SimpleLocation
 
 from himena.widgets import set_clipboard
 from himena.qt import qimage_to_ndarray
-from himena_bio.consts import ApeAnnotation
-from himena_bio._utils import (
-    feature_to_slice,
-    parse_ape_color,
-    get_feature_label,
-)
+from himena_bio._utils import feature_to_slice, feature_color, get_feature_label
 from himena_bio.widgets._base import QBaseGraphicsView
 
 if TYPE_CHECKING:
     from himena_bio.widgets.editor import QMultiSeqEdit
-
-_LOGGER = getLogger(__name__)
 
 
 class QFeatureRectitem(QtW.QGraphicsRectItem):
@@ -44,24 +36,15 @@ class QFeatureItem(QtW.QGraphicsItemGroup):
         self._rects: list[QFeatureRectitem] = []
         self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        if colors := feature.qualifiers.get(ApeAnnotation.FWCOLOR):
-            color = parse_ape_color(colors[0])
-        else:
+        if (color := feature_color(feature)) is None:
             color = QtGui.QColor(Qt.GlobalColor.gray)
-        for loc in feature.location.parts:
-            if isinstance(loc, SimpleLocation):
-                rect_item = QFeatureRectitem(loc, feature)
-                rect_item.setBrush(QtGui.QBrush(color))
-                rect_item.setToolTip(get_feature_label(feature))
-                self._rects.append(rect_item)
-                self.addToGroup(rect_item)
-            elif isinstance(loc, CompoundLocation):
-                for ith, part in enumerate(loc.parts):
-                    rect_item = QFeatureRectitem(part, feature, ith)
-                    rect_item.setBrush(QtGui.QBrush(color))
-                    rect_item.setToolTip(get_feature_label(feature))
-                    self._rects.append(rect_item)
-                    self.addToGroup(rect_item)
+        label = get_feature_label(feature)
+        for ith, part in enumerate(feature.location.parts):
+            rect_item = QFeatureRectitem(part, feature, ith)
+            rect_item.setBrush(QtGui.QBrush(color))
+            rect_item.setToolTip(label)
+            self._rects.append(rect_item)
+            self.addToGroup(rect_item)
 
 
 class QFeatureView(QBaseGraphicsView):
@@ -71,8 +54,8 @@ class QFeatureView(QBaseGraphicsView):
     ---[    ]-[ ]---
     """
 
-    clicked = QtCore.Signal(object, int)
-    hovered = QtCore.Signal(object, int)
+    clicked = QtCore.Signal(object, int)  # feature or None, nth part or position
+    hovered = QtCore.Signal(object, object)  # feature or None, position or None
 
     def __init__(self, parent: QMultiSeqEdit):
         super().__init__()
@@ -87,35 +70,50 @@ class QFeatureView(QBaseGraphicsView):
         self._feature_items: list[QFeatureItem] = []
         self.scene().addItem(self._center_line)
 
-        self._drag_start = QtCore.QPoint()
+        self._drag_start: QtCore.QPoint | None = None
         self._drag_prev = QtCore.QPoint()
         self._last_btn = Qt.MouseButton.NoButton
+        self._is_auto_range = True
 
     def set_record(self, record: SeqRecord):
         for item in self._feature_items:
             self.scene().removeItem(item)
         self._feature_items.clear()
         for feature in record.features:
+            if feature.location is None:
+                continue
             item = QFeatureItem(feature)
             self._feature_items.append(item)
             self.scene().addItem(item)
-        _len = len(record.seq) - 1
-        self._center_line.setLine(0, 0, _len, 0)
+        self._center_line.setLine(0, 0, len(record.seq), 0)
         self._record = record
-        self.auto_range()
+        if self._is_auto_range:
+            self.auto_range()
 
     def wheelEvent(self, event: QtGui.QWheelEvent):
         if event.angleDelta().y() < 0:
             self.scale(0.9, 1)
         else:
             self.scale(1.1, 1)
+        self._is_auto_range = False
 
     def auto_range(self):
-        _len = self._center_line.line().x2()
+        _len = max(self._center_line.line().x2(), 1)
         self.fitInView(QtCore.QRectF(0, -1, _len, 2))
+        self._is_auto_range = True
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._is_auto_range:
+            self.auto_range()
+
+    def _seq_pos(self, pos: QtCore.QPoint) -> int:
+        """Convert the widget position to the sequence position."""
+        x = self.mapToScene(pos).x()
+        return int(min(max(round(x), 0), len(self._record.seq)))
 
     def leaveEvent(self, a0):
-        self.hovered.emit(None, 0)
+        self.hovered.emit(None, None)
 
     def mousePressEvent(self, event):
         self._drag_start = self._drag_prev = event.pos()
@@ -123,32 +121,34 @@ class QFeatureView(QBaseGraphicsView):
         return super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QtGui.QMouseEvent):
-        if self._drag_start.isNull():
+        if self._drag_start is None:
             # is hovering
             if isinstance(item := self.itemAt(event.pos()), QFeatureRectitem):
-                self.hovered.emit(item._feature, event.pos().x())
+                self.hovered.emit(item._feature, self._seq_pos(event.pos()))
             else:
-                self.hovered.emit(None, event.pos().x())
+                self.hovered.emit(None, self._seq_pos(event.pos()))
         else:
             pos = event.pos()
             dpos = pos - self._drag_prev
             self._drag_prev = pos
+            if dpos.x() != 0:
+                self._is_auto_range = False
             self.horizontalScrollBar().setValue(
                 self.horizontalScrollBar().value() - dpos.x()
             )
         return super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        self._drag_start = QtCore.QPoint()
-        ds = self._drag_start - self._drag_prev
-        is_click = ds.x() + ds.y() < 5
+        if self._drag_start is None:
+            return super().mouseReleaseEvent(event)
+        is_click = (event.pos() - self._drag_start).manhattanLength() < 5
+        self._drag_start = None
         if is_click:
             item = self.itemAt(event.pos())
             if isinstance(item, QFeatureRectitem):
                 self.clicked.emit(item._feature, item._nth)
             else:
-                pos = event.pos().x()
-                self.clicked.emit(None, pos)
+                self.clicked.emit(None, self._seq_pos(event.pos()))
             if self._last_btn == Qt.MouseButton.RightButton:
                 if isinstance(item, QFeatureRectitem):
                     menu = self._make_menu_for_feature(item._feature, item._nth)
@@ -159,18 +159,13 @@ class QFeatureView(QBaseGraphicsView):
         return super().mouseReleaseEvent(event)
 
     def _make_menu_for_feature(self, feature: SeqFeature, nth: int) -> QtW.QMenu:
+        seq_edit = self._mseq_edit._seq_edit
         menu = QtW.QMenu()
         menu.addAction("Copy", lambda: self._copy_feature(feature, nth))
-        menu.addAction("Edit", lambda: self._mseq_edit._seq_edit._edit_feature(feature))
-        menu.addAction(
-            "Delete", lambda: self._mseq_edit._seq_edit._delete_feature(feature)
-        )
-        menu.addAction(
-            "Move Front", lambda: self._mseq_edit._seq_edit._move_feature_front(feature)
-        )
-        menu.addAction(
-            "Move Back", lambda: self._mseq_edit._seq_edit._move_feature_back(feature)
-        )
+        menu.addAction("Edit", lambda: seq_edit._edit_feature(feature))
+        menu.addAction("Delete", lambda: seq_edit._delete_feature(feature))
+        menu.addAction("Move Front", lambda: seq_edit._move_feature_front(feature))
+        menu.addAction("Move Back", lambda: seq_edit._move_feature_back(feature))
         return menu
 
     def _make_menu_for_blank(self) -> QtW.QMenu:
